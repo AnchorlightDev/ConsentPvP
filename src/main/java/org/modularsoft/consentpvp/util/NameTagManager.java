@@ -1,40 +1,61 @@
 package org.modularsoft.consentpvp.util;
 
+import dev.anchorlight.stonelib.scheduler.PlatformScheduler;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
-import org.modularsoft.consentpvp.ConsentPVP;
 
-public class NameTagManager {
+import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.logging.Logger;
 
-    private final ConsentPVP plugin;
-    private final Scoreboard scoreboard;
-    private Component enabledPrefix;
-    private Component disabledPrefix;
-    private boolean force;
+/**
+ * The ⚔ prefix above each player's head showing their PvP status, through two scoreboard teams.
+ *
+ * <p>Folia does not support scoreboards, so on Folia the indicators are switched off with one log
+ * line and every call here is a no-op.
+ */
+public final class NameTagManager {
 
     private static final String TEAM_ON = "CPVP_ON";
     private static final String TEAM_OFF = "CPVP_OFF";
 
-    public NameTagManager(ConsentPVP plugin) {
-        this.plugin = plugin;
-        this.scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+    private final Supplier<FileConfiguration> config;
+    private final Predicate<UUID> hasConsent;
+    private final PlatformScheduler scheduler;
+    private final Scoreboard scoreboard;
+    private boolean enabled;
+    private boolean force;
+
+    public NameTagManager(Supplier<FileConfiguration> config, Predicate<UUID> hasConsent,
+                          PlatformScheduler scheduler, Logger logger) {
+        this.config = config;
+        this.hasConsent = hasConsent;
+        this.scheduler = scheduler;
+        if (PlatformScheduler.isFolia()) {
+            logger.info("PvP name tag indicators are unavailable on Folia, which does not support scoreboards.");
+            this.scoreboard = null;
+        } else {
+            this.scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+        }
         loadConfig();
     }
 
     public void loadConfig() {
-        this.enabledPrefix = plugin.getMiniMessage().deserialize(
-            plugin.getConfig().getString("indicators.pvp-enabled-prefix", "<green>⚔ </green>")
-        );
-        this.disabledPrefix = plugin.getMiniMessage().deserialize(
-            plugin.getConfig().getString("indicators.pvp-disabled-prefix", "<red>⚔ </red>")
-        );
-        this.force = plugin.getConfig().getBoolean("indicators.force", false);
-
-        setupTeam(TEAM_ON, enabledPrefix);
-        setupTeam(TEAM_OFF, disabledPrefix);
+        FileConfiguration current = config.get();
+        this.enabled = scoreboard != null && current.getBoolean("indicators.enabled", true);
+        this.force = current.getBoolean("indicators.force", false);
+        if (scoreboard == null) {
+            return;
+        }
+        MiniMessage mini = MiniMessage.miniMessage();
+        setupTeam(TEAM_ON, mini.deserialize(current.getString("indicators.pvp-enabled-prefix", "<green>⚔ </green>")));
+        setupTeam(TEAM_OFF, mini.deserialize(current.getString("indicators.pvp-disabled-prefix", "<red>⚔ </red>")));
     }
 
     private void setupTeam(String teamName, Component prefix) {
@@ -47,56 +68,64 @@ public class NameTagManager {
     }
 
     public void updatePlayer(Player player) {
-        if (!plugin.areIndicatorsEnabled()) {
+        if (scoreboard == null) {
+            return;
+        }
+        if (!enabled) {
             removePlayer(player);
             return;
         }
-
-        Team currentTeam = scoreboard.getEntryTeam(player.getName());
+        String entry = player.getName();
+        Team currentTeam = scoreboard.getEntryTeam(entry);
         if (!force && currentTeam != null && !currentTeam.getName().startsWith("CPVP_")) {
-            // Already in a non-CPVP team, and we are not forcing.
+            // Another plugin owns this player's team; do not take it over unless forced.
             return;
         }
-
-        boolean hasConsent = plugin.getPVPManager().hasConsent(player.getUniqueId());
-        String targetTeamName = hasConsent ? TEAM_ON : TEAM_OFF;
-        String otherTeamName = hasConsent ? TEAM_OFF : TEAM_ON;
-
-        Team targetTeam = scoreboard.getTeam(targetTeamName);
-        Team otherTeam = scoreboard.getTeam(otherTeamName);
-
-        if (otherTeam != null && otherTeam.hasEntry(player.getName())) {
-            otherTeam.removeEntry(player.getName());
+        boolean consent = hasConsent.test(player.getUniqueId());
+        Team target = scoreboard.getTeam(consent ? TEAM_ON : TEAM_OFF);
+        Team other = scoreboard.getTeam(consent ? TEAM_OFF : TEAM_ON);
+        if (other != null && other.hasEntry(entry)) {
+            other.removeEntry(entry);
         }
-
-        if (targetTeam != null && !targetTeam.hasEntry(player.getName())) {
-            targetTeam.addEntry(player.getName());
+        if (target != null && !target.hasEntry(entry)) {
+            target.addEntry(entry);
         }
     }
 
     public void removePlayer(Player player) {
-        Team teamOn = scoreboard.getTeam(TEAM_ON);
-        Team teamOff = scoreboard.getTeam(TEAM_OFF);
-
-        if (teamOn != null && teamOn.hasEntry(player.getName())) {
-            teamOn.removeEntry(player.getName());
+        if (scoreboard == null) {
+            return;
         }
-        if (teamOff != null && teamOff.hasEntry(player.getName())) {
-            teamOff.removeEntry(player.getName());
+        for (String name : new String[]{TEAM_ON, TEAM_OFF}) {
+            Team team = scoreboard.getTeam(name);
+            if (team != null && team.hasEntry(player.getName())) {
+                team.removeEntry(player.getName());
+            }
         }
     }
 
     public void updateAllPlayers() {
+        if (scoreboard == null) {
+            return;
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
-            updatePlayer(player);
+            scheduler.runOn(player, () -> updatePlayer(player));
         }
     }
 
     public void cleanup() {
-        Team teamOn = scoreboard.getTeam(TEAM_ON);
-        Team teamOff = scoreboard.getTeam(TEAM_OFF);
+        if (scoreboard == null) {
+            return;
+        }
+        for (String name : new String[]{TEAM_ON, TEAM_OFF}) {
+            Team team = scoreboard.getTeam(name);
+            if (team != null) {
+                team.unregister();
+            }
+        }
+    }
 
-        if (teamOn != null) teamOn.unregister();
-        if (teamOff != null) teamOff.unregister();
+    public boolean isEnabled() {
+        return enabled;
     }
 }

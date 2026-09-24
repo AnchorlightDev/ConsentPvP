@@ -2,18 +2,25 @@ name: ConsentPVP
 version: '${project.version}'
 main: org.modularsoft.consentpvp.ConsentPVP
 author: "ModularSoft"
-api-version: "1.20"
+api-version: "1.21"
+folia-supported: true
 description: "Respect in Battle: ConsentPVP for a Better Gaming Experience!"
+softdepend: [floodgate]
 commands:
   pvp:
-    description: Manage your PVP consent and requests.
-    usage: /pvp <status|enable|disable|bypass|death|reload>
+    description: Manage your PVP consent, duels and status.
+    usage: /pvp
     permission: consentpvp.use
-    permission-message: You don't have permission to use this command.
 permissions:
   consentpvp.use:
     description: Allows players to use the /pvp command.
     default: true
+  consentpvp.duel:
+    description: Allows players to send and answer duel requests.
+    default: true
   consentpvp.admin:
-    description: Allows admins to bypass cooldowns, combat restrictions, and reload the configuration.
+    description: Staff commands (check, set, bypass, newbie clear, death, reload) and update notices.
     default: op
+  consentpvp.newbie.bypass:
+    description: Skips new-player protection, so PvP can be enabled straight away.
+    default: false

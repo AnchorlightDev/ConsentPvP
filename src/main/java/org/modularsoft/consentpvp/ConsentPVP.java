@@ -1,183 +1,263 @@
 package org.modularsoft.consentpvp;
 
-import dev.anchorlight.StoneLib.config.ConfigUpdater;
-
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.Bukkit;
-import org.bukkit.configuration.file.YamlConfiguration;
+import dev.anchorlight.stonelib.bedrock.BedrockForms;
+import dev.anchorlight.stonelib.combat.CombatTagService;
+import dev.anchorlight.stonelib.config.VersionedConfig;
+import dev.anchorlight.stonelib.cooldown.CooldownService;
+import dev.anchorlight.stonelib.scheduler.PlatformScheduler;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.modularsoft.consentpvp.commands.PVPCommand;
-import org.modularsoft.consentpvp.events.PVPEventListener;
-import org.modularsoft.consentpvp.util.*;
+import org.modularsoft.consentpvp.api.ConsentPvPAPI;
+import org.modularsoft.consentpvp.attack.AttackerResolver;
+import org.modularsoft.consentpvp.attack.DenialNotifier;
+import org.modularsoft.consentpvp.attack.PotionFilter;
+import org.modularsoft.consentpvp.combat.CombatTagManager;
+import org.modularsoft.consentpvp.commands.PvpCommands;
+import org.modularsoft.consentpvp.consent.ConsentApi;
+import org.modularsoft.consentpvp.consent.ConsentService;
+import org.modularsoft.consentpvp.data.PlayerDataStore;
+import org.modularsoft.consentpvp.duel.DuelManager;
+import org.modularsoft.consentpvp.listeners.CombatListener;
+import org.modularsoft.consentpvp.listeners.CombatRestrictionListener;
+import org.modularsoft.consentpvp.listeners.PlayerListener;
+import org.modularsoft.consentpvp.listeners.TrackingListener;
+import org.modularsoft.consentpvp.metrics.PluginMetrics;
+import org.modularsoft.consentpvp.protection.NewbieProtection;
+import org.modularsoft.consentpvp.protection.RespawnProtection;
+import org.modularsoft.consentpvp.tracking.OwnershipTracker;
+import org.modularsoft.consentpvp.ui.StatusPresenter;
+import org.modularsoft.consentpvp.update.UpdateNotifier;
+import org.modularsoft.consentpvp.util.Messages;
+import org.modularsoft.consentpvp.util.NameTagManager;
 
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.logging.Level;
+import java.time.Duration;
+import java.util.function.LongSupplier;
 
 public class ConsentPVP extends JavaPlugin {
 
-    private CooldownManager cooldownManager;
-    private PVPManager pvpManager;
-    private MessageManager messageManager;
-    private EndCrystalManager endCrystalManager;
-    private RespawnAnchorManager respawnAnchorManager;
-    private LavaManager lavaManager;
-    private FireManager fireManager;
-    private NameTagManager nameTagManager;
+    /** Set by the test run: no bStats and no GitHub requests. */
+    private static final boolean OFFLINE = Boolean.getBoolean("consentpvp.offline");
+    /** How long playerdata.yml waits after a change before it is written. */
+    private static final Duration SAVE_DEBOUNCE = Duration.ofSeconds(2);
 
-    private MiniMessage miniMessage;
-    private String messagePrefix;
-    private boolean disablePvpOnDeath;
-    private AttemptMessageDelivery attemptMessageDelivery;
-    private boolean notifyDefenderOnDenial;
-    private boolean indicatorsEnabled;
+    private PlatformScheduler scheduler;
+    private VersionedConfig config;
+    private volatile Settings settings;
+    private Messages messages;
+    private PlayerDataStore data;
+    private ConsentService consent;
+    private NewbieProtection newbies;
+    private RespawnProtection respawn;
+    private CombatTagManager combat;
+    private DuelManager duels;
+    private OwnershipTracker tracker;
+    private NameTagManager nameTags;
+    private StatusPresenter statusPresenter;
+    private UpdateNotifier updates;
+    private PluginMetrics metrics;
+    private BedrockForms detectedForms = BedrockForms.none();
+    private PlatformScheduler.Task cleanupTask;
+    /** Every expiry (tags, duels, protection, ownership, throttles) reads this, so tests can move time. */
+    private volatile LongSupplier clock = System::currentTimeMillis;
 
     @Override
     public void onEnable() {
-        this.miniMessage = MiniMessage.miniMessage();
+        this.scheduler = new PlatformScheduler(this);
+        this.config = new VersionedConfig(this, "config.yml");
+        this.settings = Settings.from(config.config(), getLogger());
+        this.messages = new Messages(() -> config.config().getConfigurationSection("messages"), scheduler,
+                () -> settings.attemptDelivery());
+        this.data = new PlayerDataStore(new File(getDataFolder(), "playerdata.yml"), getLogger(), SAVE_DEBOUNCE);
+        this.detectedForms = BedrockForms.detect(this, scheduler);
 
-        // Initialize managers
-        this.cooldownManager = new CooldownManager(this);
-        this.pvpManager = new PVPManager(this);
-        this.messageManager = new MessageManager(this);
-        this.endCrystalManager = new EndCrystalManager();
-        this.respawnAnchorManager = new RespawnAnchorManager();
-        this.lavaManager = new LavaManager();
-        this.fireManager = new FireManager();
-        this.nameTagManager = new NameTagManager(this);
+        this.consent = new ConsentService(data, new CooldownService(), this::settings, messages);
+        this.newbies = new NewbieProtection(this::settings, data);
+        this.respawn = new RespawnProtection(this::now);
+        this.combat = new CombatTagManager(new CombatTagService(this::now), scheduler, messages, this::settings);
+        this.duels = new DuelManager(this::settings, messages, scheduler, newbies, this::bedrockForms,
+                this::now);
+        this.nameTags = new NameTagManager(config::config, consent::hasConsent, scheduler, getLogger());
+        consent.wire(combat, duels, newbies, respawn,
+                player -> scheduler.runOn(player, () -> nameTags.updatePlayer(player)));
 
-        // Load configuration
-        ConfigUpdater.update(this, "config.yml");
-        reloadConfig();
-        reloadPluginConfig();
+        this.tracker = new OwnershipTracker(settings.ownershipExpiry(), this::now);
+        AttackerResolver resolver = new AttackerResolver(tracker);
+        DenialNotifier notifier = new DenialNotifier(messages, scheduler, this::settings, consent,
+                this::bedrockForms, this::now);
+        PotionFilter potions = new PotionFilter(() -> settings.harmfulEffects());
+        this.statusPresenter = new StatusPresenter(consent, messages, this::bedrockForms);
+        this.updates = new UpdateNotifier(messages, getLogger());
 
+        PvpCommands commands = new PvpCommands(this);
+        PluginCommand pvp = getCommand("pvp");
+        if (pvp != null) {
+            pvp.setExecutor((sender, command, label, args) -> commands.dispatch(sender, args));
+            pvp.setTabCompleter((sender, command, alias, args) -> commands.complete(sender, args));
+        }
 
-        // Register commands
-        getCommand("pvp").setExecutor(new PVPCommand(this));
-        getCommand("pvp").setTabCompleter(new org.modularsoft.consentpvp.commands.PVPTabCompleter());
+        PluginManager plugins = getServer().getPluginManager();
+        plugins.registerEvents(new CombatListener(resolver, consent, notifier, respawn, combat, potions, messages), this);
+        plugins.registerEvents(new TrackingListener(tracker), this);
+        plugins.registerEvents(new CombatRestrictionListener(combat, messages, this::settings), this);
+        plugins.registerEvents(new PlayerListener(consent, data, combat, duels, respawn, statusPresenter, nameTags,
+                updates, messages, scheduler, this::settings), this);
 
-        // Register event listeners
-        getServer().getPluginManager().registerEvents(new PVPEventListener(this), this);
+        // Tag and duel expiry: pure data plus messages, which hop to each player's own thread.
+        scheduler.globalTimer(() -> {
+            combat.sweep();
+            duels.sweep();
+        }, 20, 20);
+        scheduleCleanup();
 
-        // Schedule periodic cleanup every 5 minutes (6000 ticks)
-        getServer().getScheduler().runTaskTimer(this, () -> {
-            cooldownManager.cleanupExpiredCooldowns();
-            pvpManager.cleanupOfflinePlayers();
-        }, 6000L, 6000L);
-    }
+        getServer().getServicesManager().register(ConsentPvPAPI.class, new ConsentApi(consent, combat, duels),
+                this, ServicePriority.Normal);
 
-    public CooldownManager getCooldownManager() {
-        return cooldownManager;
-    }
-
-    public PVPManager getPVPManager() {
-        return pvpManager;
-    }
-
-    public MessageManager getMessageManager() {
-        return messageManager;
-    }
-
-    public EndCrystalManager getEndCrystalManager() {
-        return endCrystalManager;
-    }
-
-    public RespawnAnchorManager getRespawnAnchorManager() {
-        return respawnAnchorManager;
-    }
-
-    public LavaManager getLavaManager() {
-        return lavaManager;
-    }
-
-    public FireManager getFireManager() {
-        return fireManager;
-    }
-
-    public NameTagManager getNameTagManager() {
-        return nameTagManager;
-    }
-
-    public MiniMessage getMiniMessage() {
-        return miniMessage;
-    }
-
-    public String getMessagePrefix() {
-        return messagePrefix;
-    }
-
-    public boolean isPvpDisabledOnDeath() {
-        return disablePvpOnDeath;
-    }
-
-    public void setDisablePvpOnDeath(boolean disablePvpOnDeath) {
-        this.disablePvpOnDeath = disablePvpOnDeath;
-    }
-
-    public AttemptMessageDelivery getAttemptMessageDelivery() {
-        return attemptMessageDelivery;
-    }
-
-    public boolean shouldNotifyDefenderOnDenial() {
-        return notifyDefenderOnDenial;
-    }
-
-    public boolean areIndicatorsEnabled() {
-        return indicatorsEnabled;
+        if (!OFFLINE) {
+            if (settings.metricsEnabled()) {
+                metrics = new PluginMetrics();
+                metrics.start(this, data::consentSnapshot, duels::startedInLastDay,
+                        () -> bedrockForms().available());
+            }
+            if (settings.updateCheckerEnabled()) {
+                updates.check(settings.updateRepository(), getPluginMeta().getVersion());
+            }
+        }
+        nameTags.updateAllPlayers();
     }
 
     @Override
     public void onDisable() {
-        if (nameTagManager != null) {
-            nameTagManager.cleanup();
+        if (scheduler != null) {
+            scheduler.cancelAll();
+        }
+        if (combat != null) {
+            combat.shutdown();
+        }
+        if (duels != null) {
+            duels.clearAll();
+        }
+        if (metrics != null) {
+            metrics.shutdown();
+        }
+        getServer().getServicesManager().unregisterAll(this);
+        if (data != null) {
+            // Synchronous: the plugin's classes may be gone before an async write would run.
+            data.close();
+        }
+        if (nameTags != null) {
+            nameTags.cleanup();
         }
     }
 
-    public void reloadPluginConfig() {
-        applyConfigDefaults();
-        reloadConfig();
-        loadSettings();
-
-        for (org.bukkit.entity.Player player : Bukkit.getOnlinePlayers()) {
-            pvpManager.loadConsentForPlayer(player);
-        }
-
-        if (nameTagManager != null) {
-            nameTagManager.loadConfig();
-            nameTagManager.updateAllPlayers();
-        }
+    /**
+     * Reloads config.yml. A file that does not parse is left untouched and the built-in defaults are
+     * used until it is fixed.
+     *
+     * @return false when the file could not be parsed
+     */
+    public boolean reloadPluginConfig() {
+        boolean healthy = config.reload();
+        this.settings = Settings.from(config.config(), getLogger());
+        messages.reload();
+        tracker.setTtl(settings.ownershipExpiry());
+        duels.reload();
+        scheduleCleanup();
+        nameTags.loadConfig();
+        nameTags.updateAllPlayers();
+        return healthy;
     }
 
-    private void applyConfigDefaults() {
-        File configFile = new File(getDataFolder(), "config.yml");
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
-
-        try (InputStream configStream = getResource("config.yml")) {
-            if (configStream == null) {
-                return;
-            }
-
-            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
-                new InputStreamReader(configStream, StandardCharsets.UTF_8)
-            );
-            config.setDefaults(defaults);
-            config.options().copyDefaults(true);
-            config.save(configFile);
-        } catch (IOException exception) {
-            getLogger().log(Level.WARNING, "Failed to apply default configuration values", exception);
-        }
+    /** {@code /pvp death}: flips disable-on-death and saves it, comments intact. */
+    public void setDisablePvpOnDeath(boolean value) {
+        config.set("pvp.disable-on-death", value);
+        this.settings = Settings.from(config.config(), getLogger());
     }
 
-    private void loadSettings() {
-        this.messagePrefix = getConfig().getString("messages.prefix", "<gray>[<red>ConsentPVP<gray>] <white>");
-        this.disablePvpOnDeath = getConfig().getBoolean("pvp.disable-on-death", false);
-        this.attemptMessageDelivery = AttemptMessageDelivery.fromConfig(
-            getConfig().getString("messages.pvp_attempt_delivery", "chat")
-        );
-        this.notifyDefenderOnDenial = getConfig().getBoolean("messages.notify-defender-on-denial", false);
-        this.indicatorsEnabled = getConfig().getBoolean("indicators.enabled", true);
+    private void scheduleCleanup() {
+        if (cleanupTask != null) {
+            cleanupTask.cancel();
+        }
+        Duration interval = settings.ownershipCleanupInterval();
+        cleanupTask = scheduler.asyncTimer(tracker::purgeExpired, interval, interval);
+    }
+
+    // ------------------------------------------------------------- accessors
+
+    public long now() {
+        return clock.getAsLong();
+    }
+
+    /** For tests: replaces the clock every expiry reads. */
+    public void setClock(LongSupplier clock) {
+        this.clock = clock == null ? System::currentTimeMillis : clock;
+    }
+
+    public Settings settings() {
+        return settings;
+    }
+
+    /** Floodgate forms when Floodgate is installed and Bedrock support is enabled in config. */
+    public BedrockForms bedrockForms() {
+        return settings.bedrockEnabled() ? detectedForms : BedrockForms.none();
+    }
+
+    /** For tests: stands in for Floodgate. */
+    public void setBedrockForms(BedrockForms forms) {
+        this.detectedForms = forms == null ? BedrockForms.none() : forms;
+    }
+
+    public PlatformScheduler scheduler() {
+        return scheduler;
+    }
+
+    public VersionedConfig configFile() {
+        return config;
+    }
+
+    public Messages messages() {
+        return messages;
+    }
+
+    public PlayerDataStore data() {
+        return data;
+    }
+
+    public ConsentService consent() {
+        return consent;
+    }
+
+    public NewbieProtection newbies() {
+        return newbies;
+    }
+
+    public RespawnProtection respawn() {
+        return respawn;
+    }
+
+    public CombatTagManager combat() {
+        return combat;
+    }
+
+    public DuelManager duels() {
+        return duels;
+    }
+
+    public OwnershipTracker tracker() {
+        return tracker;
+    }
+
+    public NameTagManager nameTags() {
+        return nameTags;
+    }
+
+    public StatusPresenter statusPresenter() {
+        return statusPresenter;
+    }
+
+    public UpdateNotifier updates() {
+        return updates;
     }
 }

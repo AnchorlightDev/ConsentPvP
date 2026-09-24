@@ -6,99 +6,210 @@
 
   <groupId>org.modularsoft</groupId>
   <artifactId>consentpvp</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <packaging>jar</packaging>
 
   <name>ConsentPvP</name>
 
   <properties>
     <java.version>21</java.version>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <paper.version>1.21.11-R0.1-SNAPSHOT</paper.version>
+    <!--
+      2.4.0 adds the modules this plugin is built on: VersionedConfig, PlatformScheduler (Folia),
+      CombatTagService, BlockOwnership, InviteRegistry, DebouncedFileWriter, UpdateChecker,
+      BedrockForms, Buttons and section-backed MessageService. It must be released (tagged on
+      JitPack) before this builds in CI.
+    -->
+    <stonelib.version>2.4.0</stonelib.version>
   </properties>
+
+  <repositories>
+    <repository>
+      <id>papermc-repo</id>
+      <url>https://repo.papermc.io/repository/maven-public/</url>
+    </repository>
+    <repository>
+      <id>jitpack.io</id>
+      <url>https://jitpack.io</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <!-- Provided by the server. Paper also bundles Adventure and MiniMessage. -->
+    <dependency>
+      <groupId>io.papermc.paper</groupId>
+      <artifactId>paper-api</artifactId>
+      <version>${paper.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!--
+      Anchorlight shared library. A library rather than a plugin, so it is shaded and relocated.
+      Its database drivers are excluded: this plugin keeps its state in playerdata.yml.
+      The Floodgate API it compiles against is optional and provided by Floodgate at runtime.
+    -->
+    <dependency>
+      <groupId>com.github.AnchorlightDev</groupId>
+      <artifactId>StoneLib</artifactId>
+      <version>${stonelib.version}</version>
+      <scope>compile</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.xerial</groupId>
+          <artifactId>sqlite-jdbc</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.zaxxer</groupId>
+          <artifactId>HikariCP</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.kyori</groupId>
+          <artifactId>adventure-api</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <!-- Metrics. Shaded and relocated into this plugin's package, as bStats requires. -->
+    <dependency>
+      <groupId>org.bstats</groupId>
+      <artifactId>bstats-bukkit</artifactId>
+      <version>3.2.1</version>
+      <scope>compile</scope>
+    </dependency>
+
+    <!-- Tests -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>6.0.3</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- Built against Paper 1.21.11; keep it matched to paper.version. -->
+      <groupId>org.mockbukkit.mockbukkit</groupId>
+      <artifactId>mockbukkit-v1.21</artifactId>
+      <version>4.116.3</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 
   <build>
     <finalName>ConsentPvP-${project.version}</finalName>
     <defaultGoal>clean package</defaultGoal>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.13.0</version>
-        <configuration>
-          <source>${java.version}</source>
-          <target>${java.version}</target>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.5.3</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-                        <configuration>
-                            <relocations>
-                                <relocation>
-                                    <pattern>dev.dejvokep.boostedyaml</pattern>
-                                    <shadedPattern>org.modularsoft.consentpvp.libs.boostedyaml</shadedPattern>
-                                </relocation>
-                            </relocations>
-                        </configuration>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
     <resources>
       <resource>
         <directory>src/main/resources</directory>
         <filtering>true</filtering>
       </resource>
     </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>${java.version}</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- No bStats or GitHub calls from the test server. -->
+            <consentpvp.offline>true</consentpvp.offline>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <artifactSet>
+                <includes>
+                  <include>com.github.AnchorlightDev:StoneLib</include>
+                  <include>dev.dejvokep:boosted-yaml</include>
+                  <include>org.bstats:*</include>
+                </includes>
+              </artifactSet>
+              <relocations>
+                <relocation>
+                  <pattern>dev.anchorlight.stonelib</pattern>
+                  <shadedPattern>org.modularsoft.consentpvp.libs.stonelib</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>dev.dejvokep.boostedyaml</pattern>
+                  <shadedPattern>org.modularsoft.consentpvp.libs.boostedyaml</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>org.bstats</pattern>
+                  <shadedPattern>org.modularsoft.consentpvp.libs.bstats</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>com.github.AnchorlightDev:StoneLib</artifact>
+                  <!--
+                    Only the modules this plugin uses. Anything missing here fails at runtime with
+                    NoClassDefFoundError, not at compile time; the verify step below checks it.
+                  -->
+                  <includes>
+                    <include>dev/anchorlight/stonelib/bedrock/**</include>
+                    <include>dev/anchorlight/stonelib/combat/**</include>
+                    <include>dev/anchorlight/stonelib/command/**</include>
+                    <include>dev/anchorlight/stonelib/config/**</include>
+                    <include>dev/anchorlight/stonelib/cooldown/**</include>
+                    <include>dev/anchorlight/stonelib/invite/**</include>
+                    <include>dev/anchorlight/stonelib/message/**</include>
+                    <include>dev/anchorlight/stonelib/ownership/**</include>
+                    <include>dev/anchorlight/stonelib/scheduler/**</include>
+                    <include>dev/anchorlight/stonelib/sound/**</include>
+                    <include>dev/anchorlight/stonelib/time/**</include>
+                    <include>dev/anchorlight/stonelib/update/**</include>
+                    <include>dev/anchorlight/stonelib/vanish/**</include>
+                    <include>dev/anchorlight/stonelib/yaml/**</include>
+                  </includes>
+                  <excludes>
+                    <!-- Velocity-side and item-sprite classes: unused here, and they reference
+                         Velocity and newer Adventure types than 1.21.11 needs. -->
+                    <exclude>dev/anchorlight/stonelib/vanish/proxy/**</exclude>
+                    <exclude>dev/anchorlight/stonelib/message/Sprites*</exclude>
+                    <exclude>dev/anchorlight/stonelib/message/IconOptions*</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <!-- BoostedYAML bundles the JetBrains annotations; Paper already provides them. -->
+                  <artifact>dev.dejvokep:boosted-yaml</artifact>
+                  <excludes>
+                    <exclude>org/jetbrains/**</exclude>
+                    <exclude>org/intellij/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
-
-  <repositories>
-      <repository>
-        <id>papermc-repo</id>
-        <url>https://repo.papermc.io/repository/maven-public/</url>
-      </repository>
-    <repository>
-      <id>sonatype</id>
-      <url>https://oss.sonatype.org/content/groups/public/</url>
-    </repository>
-  </repositories>
-
-  <dependencies>
-    <dependency>
-      <groupId>io.papermc.paper</groupId>
-      <artifactId>paper-api</artifactId>
-      <version>1.21.5-R0.1-SNAPSHOT</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>net.kyori</groupId>
-      <artifactId>adventure-text-minimessage</artifactId>
-      <version>4.10.0</version>
-    </dependency>
-  
-        <!-- Anchorlight shared library: versioned config migration via ConfigUpdater. -->
-        <dependency>
-            <groupId>dev.anchorlight</groupId>
-            <artifactId>StoneLib</artifactId>
-            <version>1.3</version>
-            <scope>compile</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.xerial</groupId>
-                    <artifactId>sqlite-jdbc</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>net.kyori</groupId>
-                    <artifactId>adventure-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-    </dependencies>
 </project>

@@ -1,15 +1,116 @@
 # config-version drives StoneLib's versioned config migration. Do not edit it
 # on a live server. Increment it in the bundled resource only when this file is
 # restructured, and declare the relocations for that bump.
-config-version: 1
+config-version: 2
 
 pvp:
   # If true, players will have their PVP consent disabled upon death.
   disable-on-death: false
 
 cooldown:
-  # Duration in minutes before a player can toggle PVP consent again
-  duration: 5
+  # Minutes a player must wait between PvP toggles when they are not in combat.
+  # Decimals are allowed (0.5 = 30 seconds). 0 turns the cooldown off.
+  duration: 1
+
+combat-tag:
+  # A player who dealt or took PvP damage within this many seconds is "in combat".
+  # While tagged they cannot disable PvP, and the restrictions below apply.
+  enabled: true
+  duration-seconds: 15
+  # Where the live combat timer is shown: action_bar, boss_bar or none.
+  display: action_bar
+  sounds:
+    enabled: true
+    enter: "entity.player.attack.strong"
+    leave: "block.note_block.chime"
+    volume: 1.0
+    pitch: 1.0
+  # Commands blocked while tagged, without the slash. "essentials:home" style
+  # namespaced forms are matched too.
+  blocked-commands:
+    - home
+    - spawn
+    - tpa
+    - tpaccept
+    - warp
+    - back
+    - rtp
+  # Also cancel teleports caused by commands and other plugins, so aliases and
+  # plugin menus cannot get around the command list.
+  block-command-teleports: true
+  block-ender-pearls: true
+  block-chorus-fruit: true
+  # Elytra gliding and firework boosting.
+  block-elytra: true
+  block-riptide: true
+
+duels:
+  # /pvp duel <player>: temporary mutual consent between two players only.
+  enabled: true
+  # How long a request stays open.
+  request-timeout-seconds: 60
+  # How long before the same player can challenge the same target again.
+  resend-cooldown-seconds: 30
+  # A duel ends on death, logout, or after this long.
+  max-duration-seconds: 300
+
+newbie-protection:
+  # New players cannot enable PvP until they have played this long.
+  # Staff can lift it with /pvp newbie clear <player>; consentpvp.newbie.bypass skips it.
+  enabled: true
+  required-playtime-minutes: 180
+
+respawn-protection:
+  # Players cannot take PvP damage for this long after respawning. Attacking
+  # someone ends it early.
+  enabled: true
+  duration-seconds: 10
+
+potions:
+  # Only these effects are blocked between players without mutual consent.
+  # Everything else, such as healing and regeneration, always applies.
+  harmful-effects:
+    - instant_damage
+    - poison
+    - wither
+    - weakness
+    - slowness
+    - blindness
+    - darkness
+    - hunger
+    - levitation
+    - mining_fatigue
+    - nausea
+    - bad_omen
+
+ownership:
+  # How long placed lava, fire, end crystals and detonated respawn anchors stay
+  # attributed to the player responsible.
+  expire-after-seconds: 300
+  # How often expired entries are cleaned up.
+  cleanup-interval-seconds: 60
+
+denial:
+  # Minimum seconds between repeated denial messages for continuous sources,
+  # such as lingering potion clouds.
+  throttle-seconds: 2
+
+first-join:
+  # Explain PvP consent to each player once, with the toggle buttons.
+  enabled: true
+
+bedrock:
+  # Use native Geyser forms for Bedrock players when Floodgate is installed.
+  enabled: true
+
+update-checker:
+  # Check GitHub for a newer release on startup and tell admins on join.
+  enabled: true
+  repository: "ModularSoftAU/ConsentPvP"
+
+metrics:
+  # Anonymous usage statistics through bStats.
+  enabled: true
 
 messages:
   prefix: "<bold><gray>[<red>ConsentPVP<gray>]</bold> <white>"
@@ -28,13 +129,104 @@ messages:
   no_permission: "<red>You don't have permission to use this command."
   pvp_death_toggle: "<green>PVP disable on death is now %status%."
   config_reloaded: "<green>ConsentPVP configuration reloaded."
+  config_reload_failed: "<red>config.yml has an error and was not loaded, so the built-in defaults are in use. See the console for the line."
   pvp_disabled_on_death: "<red>Your PVP has been disabled due to your death."
-  pvp_status: "<white>Your PVP status is currently <green>%status%<white>."
-  bypass_cooldown_sender: "<green>Cleared PVP cooldown for %player%."
+  # %status% is replaced by status_enabled or status_disabled, which carry their own colour.
+  pvp_status: "<white>Your PVP status is currently %status%<white>."
+  status_enabled: "<green>enabled"
+  status_disabled: "<red>disabled"
+  bypass_cooldown_sender: "<green>Cleared PVP cooldown and combat tag for %player%."
   bypass_cooldown_target: "<green>Your PVP cooldown has been cleared by a staff member."
+
+  # Command feedback
+  players_only: "<red>Only players can use this command."
+  player_not_found: "<red>Player not found: %player%"
+  unknown_subcommand: "<red>Unknown option '%input%'. Try: %commands%"
+  usage: "<red>Usage: /pvp <%commands%>"
+  usage_bypass: "<red>Usage: /pvp bypass <player>"
+  usage_check: "<red>Usage: /pvp check <player>"
+  usage_set: "<red>Usage: /pvp set <player> <on|off>"
+  usage_duel: "<red>Usage: /pvp duel <player>"
+  usage_newbie: "<red>Usage: /pvp newbie clear <player>"
+  already_enabled: "<yellow>Your PVP is already enabled."
+  already_disabled: "<yellow>Your PVP is already disabled."
+  toggle_cancelled: "<red>Your PVP change was blocked."
+  anonymous_name: "someone"
+
+  # Clickable buttons
+  button_separator: " "
+  button_enable: "<green>[Enable]"
+  button_enable_hover: "<gray>Click to enable PvP"
+  button_disable: "<red>[Disable]"
+  button_disable_hover: "<gray>Click to disable PvP"
+  button_enable_pvp: "<green>[Enable PvP]"
+  button_enable_pvp_hover: "<gray>Click to turn your PvP on"
+  button_accept: "<green>[Accept]"
+  button_accept_hover: "<gray>Accept the duel"
+  button_deny: "<red>[Deny]"
+  button_deny_hover: "<gray>Decline the duel"
+
+  # Combat tag
+  combat_enter: "<red>You are in combat for %time%. Teleports and escape items are blocked."
+  combat_leave: "<green>You are no longer in combat."
+  combat_timer: "<red>In combat: <white>%time%"
+  combat_tagged_toggle: "<red>You are in combat! You can disable PVP in %time%."
+  combat_command_blocked: "<red>You can't use /%command% in combat (%time% left)."
+  combat_teleport_blocked: "<red>You can't teleport in combat (%time% left)."
+  combat_pearl_blocked: "<red>You can't use ender pearls in combat."
+  combat_chorus_blocked: "<red>You can't eat chorus fruit in combat."
+  combat_elytra_blocked: "<red>You can't fly with an elytra in combat."
+  combat_riptide_blocked: "<red>You can't use riptide in combat."
+
+  # Duels
+  duel_disabled: "<red>Duels are disabled on this server."
+  duel_self: "<red>You can't duel yourself."
+  duel_sent: "<green>Duel request sent to %player%. It expires in %time%."
+  duel_received: "<gold>%player% challenged you to a duel! It expires in %time%."
+  duel_already_pending: "<yellow>You already have a pending duel request to %player%."
+  duel_too_soon: "<red>Wait %time% before challenging %player% again."
+  duel_already_dueling: "<red>%player% is already in a duel."
+  duel_you_are_dueling: "<red>You are already in a duel."
+  duel_no_request: "<red>You have no pending duel requests."
+  duel_started: "<green>Your duel with %player% has started! It lasts up to %time%."
+  duel_denied_sender: "<red>%player% declined your duel."
+  duel_denied_target: "<gray>You declined %player%'s duel."
+  duel_expired_sender: "<gray>Your duel request to %player% expired."
+  duel_ended: "<yellow>Your duel with %player% has ended."
+  duel_newbie_self: "<red>You can't duel until your new-player protection ends (%time% of playtime left)."
+  duel_newbie_target: "<red>%player% is still under new-player protection."
+
+  # Newbie and respawn protection
+  newbie_blocked: "<red>You're under new-player protection. You can enable PVP after %time% more playtime."
+  newbie_cleared_sender: "<green>Cleared new-player protection for %player%."
+  newbie_cleared_target: "<green>A staff member lifted your new-player protection."
+  respawn_protection_start: "<green>You're protected from PvP for %time%."
+  respawn_protection_ended: "<yellow>Your respawn protection ended because you attacked."
+  respawn_protected_attacker: "<red>%player% has just respawned and is protected."
+
+  # Staff
+  check_output: "<gold>PvP for %player%:<newline><gray>Consent: %consent%<newline><gray>Toggle cooldown: <white>%cooldown%<newline><gray>Combat tag: <white>%combat%<newline><gray>Duel: <white>%duel%<newline><gray>New-player protection: <white>%newbie%"
+  check_none: "none"
+  set_sender: "<green>Set %player%'s PVP to %status%<green>."
+  set_target: "<yellow>A staff member set your PVP to %status%<yellow>."
+  update_available: "<yellow>ConsentPvP %latest% is available (you have %current%): %url%"
+
+  # First join
+  first_join: "<gold>This server uses PvP consent: players can only fight when both have PvP enabled. Yours is currently %status%<gold>."
+
+  # Bedrock forms (plain text; colour tags are converted)
+  bedrock_toggle_title: "PvP"
+  bedrock_toggle_content: "Your PvP is currently %status%."
+  bedrock_button_enable: "Enable PvP"
+  bedrock_button_disable: "Disable PvP"
+  bedrock_duel_title: "Duel request"
+  bedrock_duel_content: "%player% challenged you to a duel."
+  bedrock_button_accept: "Accept"
+  bedrock_button_deny: "Deny"
 
 indicators:
   # If true, a visual indicator will be shown above player's heads indicating their PVP status.
+  # Not available on Folia, which does not support scoreboards.
   enabled: true
   # If true, the plugin will force its own indicators even if it overwrites name tags from other plugins.
   force: false
