@@ -1,3 +1,8 @@
+# config-version drives StoneLib's versioned config migration. Do not edit it
+# on a live server. Increment it in the bundled resource only when this file is
+# restructured, and declare the relocations for that bump.
+config-version: 1
+
 pvp:
   # If true, players will have their PVP consent disabled upon death.
   disable-on-death: false

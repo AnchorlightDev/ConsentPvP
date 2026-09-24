@@ -1,5 +1,7 @@
 package org.modularsoft.consentpvp;
 
+import dev.anchorlight.StoneLib.config.ConfigUpdater;
+
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -48,7 +50,8 @@ public class ConsentPVP extends JavaPlugin {
         this.nameTagManager = new NameTagManager(this);
 
         // Load configuration
-        saveDefaultConfig();
+        ConfigUpdater.update(this, "config.yml");
+        reloadConfig();
         reloadPluginConfig();
 
 
