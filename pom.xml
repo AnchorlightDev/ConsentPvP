@@ -17,12 +17,11 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <paper.version>1.21.11-R0.1-SNAPSHOT</paper.version>
     <!--
-      2.4.0 adds the modules this plugin is built on: VersionedConfig, PlatformScheduler (Folia),
-      BlockOwnership, InviteRegistry, DebouncedFileWriter, UpdateChecker,
-      BedrockForms, Buttons and section-backed MessageService. It must be released (tagged on
-      JitPack) before this builds in CI.
+      The JitPack tag. v2.2.0 is the first release with the modules this plugin is built on:
+      VersionedConfig, PlatformScheduler (Folia), BlockOwnership, InviteRegistry,
+      DebouncedFileWriter, UpdateChecker, BedrockForms, Buttons and section-backed MessageService.
     -->
-    <stonelib.version>2.4.0</stonelib.version>
+    <stonelib.version>v2.2.0</stonelib.version>
   </properties>
 
   <repositories>
