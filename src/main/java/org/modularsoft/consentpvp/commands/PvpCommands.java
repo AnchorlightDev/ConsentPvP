@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.StringUtil;
 import org.modularsoft.consentpvp.ConsentPVP;
 import org.modularsoft.consentpvp.api.PvPConsentChangeEvent;
+import org.modularsoft.consentpvp.api.PvPOverride;
 import org.modularsoft.consentpvp.consent.ConsentService;
 import org.modularsoft.consentpvp.duel.DuelManager;
 import org.modularsoft.consentpvp.util.Messages;
@@ -77,6 +78,7 @@ public final class PvpCommands {
         router.register(new Bypass());
         router.register(new Check());
         router.register(new SetConsent());
+        router.register(new Force());
         router.register(new Newbie());
         router.register(simple("reload", ADMIN, (sender, args) -> {
             boolean healthy = plugin.reloadPluginConfig();
@@ -161,6 +163,10 @@ public final class PvpCommands {
                 messages.send(sender, "usage_duel");
                 return;
             }
+            if (plugin.consent().override() != PvPOverride.NONE) {
+                messages.send(sender, "duel_overridden");
+                return;
+            }
             Player target = Bukkit.getPlayerExact(args[0]);
             if (target == null || !((Player) sender).canSee(target)) {
                 messages.send(sender, "player_not_found", "player", args[0]);
@@ -205,7 +211,7 @@ public final class PvpCommands {
         }
     }
 
-    /** Clears the toggle cooldown and the combat tag. */
+    /** Clears the toggle cooldown. */
     private final class Bypass extends Targeted {
         @Override public String getName() { return "bypass"; }
 
@@ -221,7 +227,6 @@ public final class PvpCommands {
                 return;
             }
             plugin.consent().cooldowns().clear(target.getUniqueId(), ConsentService.TOGGLE_COOLDOWN);
-            plugin.combat().clear(target.getUniqueId());
             messages.send(sender, "bypass_cooldown_sender", "player", target.getName());
             messages.send(target, "bypass_cooldown_target");
         }
@@ -245,7 +250,6 @@ public final class PvpCommands {
             String none = plainNone();
             Component consent = plugin.statusPresenter().statusWord(plugin.consent().hasConsent(id));
             Duration cooldown = plugin.consent().cooldowns().remaining(id, ConsentService.TOGGLE_COOLDOWN);
-            Duration combat = plugin.combat().remaining(id);
             String duel = plugin.duels().duelOf(id)
                     .map(d -> {
                         OfflinePlayer partner = Bukkit.getOfflinePlayer(d.partnerOf(id));
@@ -255,25 +259,24 @@ public final class PvpCommands {
             String name = target.getName() == null ? args[0] : target.getName();
             Player online = target.getPlayer();
             if (online == null) {
-                send(sender, name, consent, cooldown, combat, duel, none);
+                send(sender, name, consent, cooldown, duel, none);
                 return;
             }
             // Playtime is the target's own state, so it is read on the target's thread.
             plugin.scheduler().runOn(online, () -> {
                 Duration newbie = plugin.newbies().remaining(online);
-                send(sender, name, consent, cooldown, combat, duel,
+                send(sender, name, consent, cooldown, duel,
                         newbie.isZero() ? none : Durations.compact(newbie));
             });
         }
 
-        private void send(CommandSender sender, String name, Component consent, Duration cooldown, Duration combat,
-                          String duel, String newbie) {
+        private void send(CommandSender sender, String name, Component consent, Duration cooldown, String duel,
+                          String newbie) {
             String none = plainNone();
-            messages.send(sender, "check_output",
+            messages.send(sender, "check_status",
                     "player", name,
                     "consent", consent,
                     "cooldown", cooldown.isZero() ? none : Durations.compact(cooldown),
-                    "combat", combat.isZero() ? none : Durations.compact(combat),
                     "duel", duel,
                     "newbie", newbie);
         }
@@ -327,6 +330,71 @@ public final class PvpCommands {
                 return StringUtil.copyPartialMatches(args[1], List.of("on", "off"), new ArrayList<>());
             }
             return Collections.emptyList();
+        }
+    }
+
+    /** {@code /pvp force <on|off|clear>}: a server-wide override for events. */
+    private final class Force implements SubCommand {
+        private static final List<String> OPTIONS = List.of("on", "off", "clear");
+
+        @Override public String getName() { return "force"; }
+        @Override public String getPermission() { return ADMIN; }
+
+        @Override
+        public void execute(CommandSender sender, String[] args) {
+            PvPOverride current = plugin.consent().override();
+            if (args.length < 1) {
+                messages.send(sender, "force_current", "state", stateWord(current));
+                messages.send(sender, "usage_force");
+                return;
+            }
+            PvPOverride wanted = switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "on" -> PvPOverride.FORCED_ON;
+                case "off" -> PvPOverride.FORCED_OFF;
+                case "clear" -> PvPOverride.NONE;
+                default -> null;
+            };
+            if (wanted == null) {
+                messages.send(sender, "usage_force");
+                return;
+            }
+            if (wanted == current) {
+                messages.send(sender, "force_unchanged", "state", stateWord(current));
+                return;
+            }
+            plugin.consent().setOverride(wanted);
+            plugin.nameTags().updateAllPlayers();
+            if (wanted != PvPOverride.NONE) {
+                // Duels mean nothing under an override, and one left running would outlast it.
+                plugin.duels().clearAll();
+            }
+            plugin.getLogger().info(sender.getName() + " set the PvP override to " + wanted);
+            String broadcast = switch (wanted) {
+                case FORCED_ON -> "pvp_forced_on_broadcast";
+                case FORCED_OFF -> "pvp_forced_off_broadcast";
+                case NONE -> "pvp_force_cleared_broadcast";
+            };
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                messages.send(player, broadcast);
+            }
+            if (!(sender instanceof Player)) {
+                messages.send(sender, "force_set", "state", stateWord(wanted));
+            }
+        }
+
+        private Component stateWord(PvPOverride override) {
+            return messages.plain(switch (override) {
+                case FORCED_ON -> "force_state_on";
+                case FORCED_OFF -> "force_state_off";
+                case NONE -> "force_state_none";
+            });
+        }
+
+        @Override
+        public List<String> tabComplete(CommandSender sender, String[] args) {
+            return args.length == 1
+                    ? StringUtil.copyPartialMatches(args[0], OPTIONS, new ArrayList<>())
+                    : Collections.emptyList();
         }
     }
 

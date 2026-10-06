@@ -62,7 +62,7 @@ class CompatibilityTest {
         assertEquals(7 * 60_000, plugin.settings().toggleCooldown().toMillis());
         YamlConfiguration migrated = YamlConfiguration.loadConfiguration(config);
         assertEquals("<green>You are now fair game.", migrated.getString("messages.pvp_enabled"));
-        assertEquals(15, migrated.getInt("combat-tag.duration-seconds"), "new keys are merged in");
+        assertEquals(60, migrated.getInt("duels.request-timeout-seconds"), "new keys are merged in");
         assertEquals(2, migrated.getInt("config-version"));
 
         PlayerMock alice = server.addPlayer("Alice");

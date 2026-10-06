@@ -29,17 +29,14 @@ It runs on **Paper 1.21.11** and on **Folia**, and needs **Java 21**.
 - **Potion filtering.** Only harmful effects (poison, instant damage, slowness, …) are blocked.
   Healing, regeneration and other beneficial effects always apply, including the beneficial part of
   a mixed potion.
-- **Combat tag.** Dealing or taking PvP damage tags both players for a short time. While tagged:
-  - they cannot turn PvP off, and are told how long is left;
-  - teleport commands (`/home`, `/spawn`, `/tpa`, …) and teleports caused by commands or other
-    plugins are blocked;
-  - ender pearls, chorus fruit, elytra gliding and firework boosting, and riptide can each be
-    blocked separately.
-
-  A live timer shows in the action bar or a boss bar, with sounds on entering and leaving combat.
-  The tag ends on death. Logging out while tagged carries no penalty.
-- **Toggle cooldown.** Outside combat, a short cooldown applies between toggles. Toggling to the
+- **Toggle cooldown.** A short cooldown applies between toggles. Toggling to the
   state you are already in does nothing and starts no cooldown.
+- **Server-wide override for events.** `/pvp force on` lets every player hurt every other, and
+  `/pvp force off` stops all PvP, duels included. Players' own settings are left alone, so
+  `/pvp force clear` puts everyone back as they were. Everyone online is told when it changes, and
+  players who join, check their status or toggle while it is active are reminded. Respawn protection
+  still applies when forced on. Starting an override ends any running duels, and no new ones can
+  start until it is cleared. The override lasts until it is cleared or the server restarts.
 - **Duels.** `/pvp duel <player>` asks for a one-off fight. Accepting it gives just those two
   players consent with each other, without changing either player's own setting. The duel ends on
   death, logout or a time limit. Requests expire, and the same player cannot be re-challenged
@@ -86,9 +83,10 @@ Upgrading keeps your existing `config.yml` values and `playerdata.yml`. New sett
 | `/pvp enable` / `/pvp disable` | players | Turns your PvP consent on or off. |
 | `/pvp duel <player>` | players | Challenges a player to a duel. |
 | `/pvp accept [player]` / `/pvp deny [player]` | players | Answers a duel request. The newest one is used if you give no name. |
-| `/pvp check <player>` | staff, console | Shows consent, toggle cooldown, combat tag, active duel and new-player protection. |
+| `/pvp check <player>` | staff, console | Shows consent, toggle cooldown, active duel and new-player protection. |
 | `/pvp set <player> on\|off` | staff, console | Forces a player's consent, ignoring cooldowns and protection. |
-| `/pvp bypass <player>` | staff, console | Clears a player's toggle cooldown and combat tag. |
+| `/pvp force on\|off\|clear` | staff, console | Overrides everyone's PvP server-wide for an event, or lifts the override. With no argument, shows the current state. |
+| `/pvp bypass <player>` | staff, console | Clears a player's toggle cooldown. |
 | `/pvp newbie clear <player>` | staff, console | Lifts new-player protection early. |
 | `/pvp death` | staff, console | Toggles whether PvP turns off when a player dies. |
 | `/pvp reload` | staff, console | Reloads `config.yml`. |
@@ -103,7 +101,7 @@ Tab completion only suggests the commands you are allowed to run.
 |---|---|---|
 | `consentpvp.use` | everyone | Use `/pvp`. |
 | `consentpvp.duel` | everyone | Send and answer duel requests. |
-| `consentpvp.admin` | op | The staff commands above, and update notices on join. It does **not** bypass consent or the combat tag. |
+| `consentpvp.admin` | op | The staff commands above, and update notices on join. It does **not** bypass consent. |
 | `consentpvp.newbie.bypass` | nobody | Skips new-player protection. |
 
 ---
@@ -116,8 +114,7 @@ main ones are:
 | Section | What it controls |
 |---|---|
 | `pvp.disable-on-death` | Turn PvP off when a player dies. |
-| `cooldown.duration` | Minutes between toggles outside combat (decimals allowed). |
-| `combat-tag.*` | Tag length, `display` (`action_bar`, `boss_bar` or `none`), sounds, `blocked-commands`, and one switch per escape route: `block-command-teleports`, `block-ender-pearls`, `block-chorus-fruit`, `block-elytra`, `block-riptide`. |
+| `cooldown.duration` | Minutes between toggles (decimals allowed). |
 | `duels.*` | On/off, request timeout, re-challenge cooldown, maximum duel length. |
 | `newbie-protection.*` | On/off and the required playtime in minutes. |
 | `respawn-protection.*` | On/off and the length in seconds. |
@@ -145,10 +142,10 @@ if (api != null && api.canFight(attacker, victim)) {
 
 | Method | Returns |
 |---|---|
-| `canFight(Player attacker, Player defender)` | Both players consent (or are dueling each other), and the defender is not respawn-protected. |
+| `canFight(Player attacker, Player defender)` | Both players consent (or are dueling each other, or PvP is forced on), and the defender is not respawn-protected. Always false while PvP is forced off. |
 | `hasConsent(UUID)` | The player's own setting, online or offline. |
-| `isInCombat(UUID)` | Whether the player is combat-tagged. |
 | `isDueling(UUID, UUID)` | Whether these two players are in an active duel. |
+| `getOverride()` | The `/pvp force` state: `NONE`, `FORCED_ON` or `FORCED_OFF`. |
 
 `PvPConsentChangeEvent` fires before any consent change and can be cancelled. Its cause is
 `COMMAND`, `DEATH` or `ADMIN`. Add `softdepend: [ConsentPVP]` to your `plugin.yml`.

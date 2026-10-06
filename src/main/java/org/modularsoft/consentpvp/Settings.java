@@ -20,20 +20,6 @@ import java.util.logging.Logger;
 public record Settings(
         boolean disablePvpOnDeath,
         Duration toggleCooldown,
-        boolean combatTagEnabled,
-        Duration combatTagDuration,
-        CombatDisplay combatDisplay,
-        boolean combatSounds,
-        String combatEnterSound,
-        String combatLeaveSound,
-        float soundVolume,
-        float soundPitch,
-        Set<String> blockedCommands,
-        boolean blockCommandTeleports,
-        boolean blockEnderPearls,
-        boolean blockChorusFruit,
-        boolean blockElytra,
-        boolean blockRiptide,
         boolean duelsEnabled,
         Duration duelRequestTimeout,
         Duration duelResendCooldown,
@@ -56,47 +42,10 @@ public record Settings(
         boolean indicatorsEnabled
 ) {
 
-    /** Where the live combat timer is drawn. */
-    public enum CombatDisplay {
-        ACTION_BAR, BOSS_BAR, NONE;
-
-        static CombatDisplay parse(String raw) {
-            try {
-                return valueOf(raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException ex) {
-                return ACTION_BAR;
-            }
-        }
-    }
-
     public static Settings from(FileConfiguration config, Logger logger) {
-        Set<String> commands = new HashSet<>();
-        for (String command : config.getStringList("combat-tag.blocked-commands")) {
-            String normalised = command.trim().toLowerCase(Locale.ROOT);
-            if (normalised.startsWith("/")) {
-                normalised = normalised.substring(1);
-            }
-            if (!normalised.isEmpty()) {
-                commands.add(normalised);
-            }
-        }
         return new Settings(
                 config.getBoolean("pvp.disable-on-death", false),
                 minutes(config.getDouble("cooldown.duration", 1)),
-                config.getBoolean("combat-tag.enabled", true),
-                seconds(config.getDouble("combat-tag.duration-seconds", 15)),
-                CombatDisplay.parse(config.getString("combat-tag.display", "action_bar")),
-                config.getBoolean("combat-tag.sounds.enabled", true),
-                config.getString("combat-tag.sounds.enter", ""),
-                config.getString("combat-tag.sounds.leave", ""),
-                (float) config.getDouble("combat-tag.sounds.volume", 1.0),
-                (float) config.getDouble("combat-tag.sounds.pitch", 1.0),
-                Set.copyOf(commands),
-                config.getBoolean("combat-tag.block-command-teleports", true),
-                config.getBoolean("combat-tag.block-ender-pearls", true),
-                config.getBoolean("combat-tag.block-chorus-fruit", true),
-                config.getBoolean("combat-tag.block-elytra", true),
-                config.getBoolean("combat-tag.block-riptide", true),
                 config.getBoolean("duels.enabled", true),
                 seconds(config.getDouble("duels.request-timeout-seconds", 60)),
                 seconds(config.getDouble("duels.resend-cooldown-seconds", 30)),

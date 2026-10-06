@@ -19,7 +19,7 @@ permissions:
     description: Allows players to send and answer duel requests.
     default: true
   consentpvp.admin:
-    description: Staff commands (check, set, bypass, newbie clear, death, reload) and update notices.
+    description: Staff commands (check, set, force, bypass, newbie clear, death, reload) and update notices.
     default: op
   consentpvp.newbie.bypass:
     description: Skips new-player protection, so PvP can be enabled straight away.

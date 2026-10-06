@@ -8,6 +8,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffectType;
 import org.modularsoft.consentpvp.Settings;
+import org.modularsoft.consentpvp.api.PvPOverride;
 import org.modularsoft.consentpvp.consent.ConsentService;
 import org.modularsoft.consentpvp.util.Messages;
 
@@ -68,10 +69,14 @@ public final class DenialNotifier {
         if (throttled && !allow(attacker.id(), defender.getUniqueId())) {
             return;
         }
+        Player attackerPlayer = attacker.player();
+        if (consent.override() == PvPOverride.FORCED_OFF) {
+            forcedOff(attackerPlayer);
+            return;
+        }
         boolean defenderHidden = defender.hasPotionEffect(PotionEffectType.INVISIBILITY)
                 || VanishStatus.isVanished(defender);
         String defenderName = defender.getName();
-        Player attackerPlayer = attacker.player();
 
         if (attackerPlayer != null) {
             Component button = enableButton(attackerPlayer);
@@ -110,6 +115,10 @@ public final class DenialNotifier {
      * splash; the defenders are all within a few blocks of it.
      */
     public void deniedSplash(Player thrower, List<Player> defenders) {
+        if (consent.override() == PvPOverride.FORCED_OFF) {
+            forcedOff(thrower);
+            return;
+        }
         // Defender state is read here, where the splash is; the thrower's on the thrower's thread.
         List<Boolean> defenderHidden = new ArrayList<>();
         List<String> defenderNames = new ArrayList<>();
@@ -152,6 +161,13 @@ public final class DenialNotifier {
         boolean hidden = defender.hasPotionEffect(PotionEffectType.INVISIBILITY) || VanishStatus.isVanished(defender);
         String name = hidden ? anonymousName() : defender.getName();
         messages.attempt(attacker, "respawn_protected_attacker", null, "player", name);
+    }
+
+    /** PvP is off for everyone, so names and the enable button would only mislead. */
+    private void forcedOff(Player attacker) {
+        if (attacker != null) {
+            scheduler.runOn(attacker, () -> messages.attempt(attacker, "pvp_forced_off_denied", null));
+        }
     }
 
     private Component enableButton(Player attacker) {

@@ -21,7 +21,6 @@ import org.modularsoft.consentpvp.attack.AttackerResolver;
 import org.modularsoft.consentpvp.attack.AttackerResolver.Attacker;
 import org.modularsoft.consentpvp.attack.DenialNotifier;
 import org.modularsoft.consentpvp.attack.PotionFilter;
-import org.modularsoft.consentpvp.combat.CombatTagManager;
 import org.modularsoft.consentpvp.consent.ConsentService;
 import org.modularsoft.consentpvp.protection.RespawnProtection;
 import org.modularsoft.consentpvp.util.Messages;
@@ -45,18 +44,15 @@ public final class CombatListener implements Listener {
     private final ConsentService consent;
     private final DenialNotifier notifier;
     private final RespawnProtection respawn;
-    private final CombatTagManager combat;
     private final PotionFilter potions;
     private final Messages messages;
 
     public CombatListener(AttackerResolver resolver, ConsentService consent, DenialNotifier notifier,
-                          RespawnProtection respawn, CombatTagManager combat, PotionFilter potions,
-                          Messages messages) {
+                          RespawnProtection respawn, PotionFilter potions, Messages messages) {
         this.resolver = resolver;
         this.consent = consent;
         this.notifier = notifier;
         this.respawn = respawn;
-        this.combat = combat;
         this.potions = potions;
         this.messages = messages;
     }
@@ -99,22 +95,6 @@ public final class CombatListener implements Listener {
             return;
         }
         endAttackerProtection(attackerPlayer);
-    }
-
-    /** Tags both fighters once damage has survived every other plugin. */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onDamageApplied(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player defender)) {
-            return;
-        }
-        Attacker attacker = resolver.resolveAttacker(event);
-        if (attacker == null || attacker.id().equals(defender.getUniqueId())) {
-            return;
-        }
-        combat.tag(defender);
-        if (attacker.player() != null) {
-            combat.tag(attacker.player());
-        }
     }
 
     // --------------------------------------------------------------- knockback

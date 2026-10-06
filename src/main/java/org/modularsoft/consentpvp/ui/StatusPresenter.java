@@ -44,9 +44,10 @@ public final class StatusPresenter {
         Component status = statusWord(enabled);
         if (sendForm(player, enabled)) {
             messages.send(player, key, "status", status);
-            return;
+        } else {
+            messages.sendWith(player, key, toggleButtons(), "status", status);
         }
-        messages.sendWith(player, key, toggleButtons(), "status", status);
+        consent.sendOverrideNotice(player);
     }
 
     public Component toggleButtons() {

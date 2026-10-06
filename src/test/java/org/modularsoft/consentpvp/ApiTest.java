@@ -48,16 +48,13 @@ class ApiTest extends PluginTest {
     }
 
     @Test
-    void isInCombatAndIsDueling() {
+    void isDueling() {
         PlayerMock alice = player("Alice", false);
         PlayerMock bob = player("Bob", false);
         alice.performCommand("pvp duel Bob");
         bob.performCommand("pvp accept");
         assertTrue(api().isDueling(alice.getUniqueId(), bob.getUniqueId()));
         assertTrue(api().isDueling(bob.getUniqueId(), alice.getUniqueId()));
-        assertFalse(api().isInCombat(alice.getUniqueId()));
-        Fx.melee(alice, bob);
-        assertTrue(api().isInCombat(alice.getUniqueId()));
     }
 
     @Test

@@ -12,7 +12,6 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.modularsoft.consentpvp.Settings;
 import org.modularsoft.consentpvp.api.PvPConsentChangeEvent;
-import org.modularsoft.consentpvp.combat.CombatTagManager;
 import org.modularsoft.consentpvp.consent.ConsentService;
 import org.modularsoft.consentpvp.data.PlayerDataStore;
 import org.modularsoft.consentpvp.duel.DuelManager;
@@ -32,7 +31,6 @@ public final class PlayerListener implements Listener {
 
     private final ConsentService consent;
     private final PlayerDataStore data;
-    private final CombatTagManager combat;
     private final DuelManager duels;
     private final RespawnProtection respawn;
     private final StatusPresenter status;
@@ -42,13 +40,12 @@ public final class PlayerListener implements Listener {
     private final PlatformScheduler scheduler;
     private final Supplier<Settings> settings;
 
-    public PlayerListener(ConsentService consent, PlayerDataStore data, CombatTagManager combat, DuelManager duels,
+    public PlayerListener(ConsentService consent, PlayerDataStore data, DuelManager duels,
                           RespawnProtection respawn, StatusPresenter status, NameTagManager nameTags,
                           UpdateNotifier updates, Messages messages, PlatformScheduler scheduler,
                           Supplier<Settings> settings) {
         this.consent = consent;
         this.data = data;
-        this.combat = combat;
         this.duels = duels;
         this.respawn = respawn;
         this.status = status;
@@ -63,17 +60,17 @@ public final class PlayerListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         nameTags.updatePlayer(player);
+        consent.sendOverrideNotice(player);
         if (settings.get().firstJoinEnabled() && data.markExplainerSeen(player.getUniqueId())) {
             scheduler.entityLater(player, () -> status.explain(player), EXPLAINER_DELAY_TICKS);
         }
         updates.notifyOnJoin(player);
     }
 
-    /** Logging out in combat carries no penalty; the tag and any duel simply end. */
+    /** Logging out ends any duel. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        combat.clear(player.getUniqueId());
         duels.onQuit(player.getUniqueId());
         respawn.end(player.getUniqueId());
         nameTags.removePlayer(player);
@@ -82,7 +79,6 @@ public final class PlayerListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
-        combat.clear(player.getUniqueId());
         duels.onDeath(player.getUniqueId());
         if (settings.get().disablePvpOnDeath()
                 && consent.force(player.getUniqueId(), player, false, PvPConsentChangeEvent.Cause.DEATH)) {

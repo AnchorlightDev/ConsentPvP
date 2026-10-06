@@ -1,7 +1,6 @@
 package org.modularsoft.consentpvp;
 
 import dev.anchorlight.stonelib.bedrock.BedrockForms;
-import dev.anchorlight.stonelib.combat.CombatTagService;
 import dev.anchorlight.stonelib.config.VersionedConfig;
 import dev.anchorlight.stonelib.cooldown.CooldownService;
 import dev.anchorlight.stonelib.scheduler.PlatformScheduler;
@@ -13,14 +12,12 @@ import org.modularsoft.consentpvp.api.ConsentPvPAPI;
 import org.modularsoft.consentpvp.attack.AttackerResolver;
 import org.modularsoft.consentpvp.attack.DenialNotifier;
 import org.modularsoft.consentpvp.attack.PotionFilter;
-import org.modularsoft.consentpvp.combat.CombatTagManager;
 import org.modularsoft.consentpvp.commands.PvpCommands;
 import org.modularsoft.consentpvp.consent.ConsentApi;
 import org.modularsoft.consentpvp.consent.ConsentService;
 import org.modularsoft.consentpvp.data.PlayerDataStore;
 import org.modularsoft.consentpvp.duel.DuelManager;
 import org.modularsoft.consentpvp.listeners.CombatListener;
-import org.modularsoft.consentpvp.listeners.CombatRestrictionListener;
 import org.modularsoft.consentpvp.listeners.PlayerListener;
 import org.modularsoft.consentpvp.listeners.TrackingListener;
 import org.modularsoft.consentpvp.metrics.PluginMetrics;
@@ -51,7 +48,6 @@ public class ConsentPVP extends JavaPlugin {
     private ConsentService consent;
     private NewbieProtection newbies;
     private RespawnProtection respawn;
-    private CombatTagManager combat;
     private DuelManager duels;
     private OwnershipTracker tracker;
     private NameTagManager nameTags;
@@ -60,7 +56,7 @@ public class ConsentPVP extends JavaPlugin {
     private PluginMetrics metrics;
     private BedrockForms detectedForms = BedrockForms.none();
     private PlatformScheduler.Task cleanupTask;
-    /** Every expiry (tags, duels, protection, ownership, throttles) reads this, so tests can move time. */
+    /** Every expiry (duels, protection, ownership, throttles) reads this, so tests can move time. */
     private volatile LongSupplier clock = System::currentTimeMillis;
 
     @Override
@@ -76,11 +72,10 @@ public class ConsentPVP extends JavaPlugin {
         this.consent = new ConsentService(data, new CooldownService(), this::settings, messages);
         this.newbies = new NewbieProtection(this::settings, data);
         this.respawn = new RespawnProtection(this::now);
-        this.combat = new CombatTagManager(new CombatTagService(this::now), scheduler, messages, this::settings);
         this.duels = new DuelManager(this::settings, messages, scheduler, newbies, this::bedrockForms,
                 this::now);
-        this.nameTags = new NameTagManager(config::config, consent::hasConsent, scheduler, getLogger());
-        consent.wire(combat, duels, newbies, respawn,
+        this.nameTags = new NameTagManager(config::config, consent::effectiveConsent, scheduler, getLogger());
+        consent.wire(duels, newbies, respawn,
                 player -> scheduler.runOn(player, () -> nameTags.updatePlayer(player)));
 
         this.tracker = new OwnershipTracker(settings.ownershipExpiry(), this::now);
@@ -99,20 +94,16 @@ public class ConsentPVP extends JavaPlugin {
         }
 
         PluginManager plugins = getServer().getPluginManager();
-        plugins.registerEvents(new CombatListener(resolver, consent, notifier, respawn, combat, potions, messages), this);
+        plugins.registerEvents(new CombatListener(resolver, consent, notifier, respawn, potions, messages), this);
         plugins.registerEvents(new TrackingListener(tracker), this);
-        plugins.registerEvents(new CombatRestrictionListener(combat, messages, this::settings), this);
-        plugins.registerEvents(new PlayerListener(consent, data, combat, duels, respawn, statusPresenter, nameTags,
+        plugins.registerEvents(new PlayerListener(consent, data, duels, respawn, statusPresenter, nameTags,
                 updates, messages, scheduler, this::settings), this);
 
-        // Tag and duel expiry: pure data plus messages, which hop to each player's own thread.
-        scheduler.globalTimer(() -> {
-            combat.sweep();
-            duels.sweep();
-        }, 20, 20);
+        // Duel expiry: pure data plus messages, which hop to each player's own thread.
+        scheduler.globalTimer(duels::sweep, 20, 20);
         scheduleCleanup();
 
-        getServer().getServicesManager().register(ConsentPvPAPI.class, new ConsentApi(consent, combat, duels),
+        getServer().getServicesManager().register(ConsentPvPAPI.class, new ConsentApi(consent, duels),
                 this, ServicePriority.Normal);
 
         if (!OFFLINE) {
@@ -132,9 +123,6 @@ public class ConsentPVP extends JavaPlugin {
     public void onDisable() {
         if (scheduler != null) {
             scheduler.cancelAll();
-        }
-        if (combat != null) {
-            combat.shutdown();
         }
         if (duels != null) {
             duels.clearAll();
@@ -235,10 +223,6 @@ public class ConsentPVP extends JavaPlugin {
 
     public RespawnProtection respawn() {
         return respawn;
-    }
-
-    public CombatTagManager combat() {
-        return combat;
     }
 
     public DuelManager duels() {

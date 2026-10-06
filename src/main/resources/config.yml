@@ -8,41 +8,9 @@ pvp:
   disable-on-death: false
 
 cooldown:
-  # Minutes a player must wait between PvP toggles when they are not in combat.
+  # Minutes a player must wait between PvP toggles.
   # Decimals are allowed (0.5 = 30 seconds). 0 turns the cooldown off.
   duration: 1
-
-combat-tag:
-  # A player who dealt or took PvP damage within this many seconds is "in combat".
-  # While tagged they cannot disable PvP, and the restrictions below apply.
-  enabled: true
-  duration-seconds: 15
-  # Where the live combat timer is shown: action_bar, boss_bar or none.
-  display: action_bar
-  sounds:
-    enabled: true
-    enter: "entity.player.attack.strong"
-    leave: "block.note_block.chime"
-    volume: 1.0
-    pitch: 1.0
-  # Commands blocked while tagged, without the slash. "essentials:home" style
-  # namespaced forms are matched too.
-  blocked-commands:
-    - home
-    - spawn
-    - tpa
-    - tpaccept
-    - warp
-    - back
-    - rtp
-  # Also cancel teleports caused by commands and other plugins, so aliases and
-  # plugin menus cannot get around the command list.
-  block-command-teleports: true
-  block-ender-pearls: true
-  block-chorus-fruit: true
-  # Elytra gliding and firework boosting.
-  block-elytra: true
-  block-riptide: true
 
 duels:
   # /pvp duel <player>: temporary mutual consent between two players only.
@@ -135,7 +103,7 @@ messages:
   pvp_status: "<white>Your PVP status is currently %status%<white>."
   status_enabled: "<green>enabled"
   status_disabled: "<red>disabled"
-  bypass_cooldown_sender: "<green>Cleared PVP cooldown and combat tag for %player%."
+  bypass_cooldown_sender: "<green>Cleared PVP cooldown for %player%."
   bypass_cooldown_target: "<green>Your PVP cooldown has been cleared by a staff member."
 
   # Command feedback
@@ -148,6 +116,7 @@ messages:
   usage_set: "<red>Usage: /pvp set <player> <on|off>"
   usage_duel: "<red>Usage: /pvp duel <player>"
   usage_newbie: "<red>Usage: /pvp newbie clear <player>"
+  usage_force: "<red>Usage: /pvp force <on|off|clear>"
   already_enabled: "<yellow>Your PVP is already enabled."
   already_disabled: "<yellow>Your PVP is already disabled."
   toggle_cancelled: "<red>Your PVP change was blocked."
@@ -166,17 +135,20 @@ messages:
   button_deny: "<red>[Deny]"
   button_deny_hover: "<gray>Decline the duel"
 
-  # Combat tag
-  combat_enter: "<red>You are in combat for %time%. Teleports and escape items are blocked."
-  combat_leave: "<green>You are no longer in combat."
-  combat_timer: "<red>In combat: <white>%time%"
-  combat_tagged_toggle: "<red>You are in combat! You can disable PVP in %time%."
-  combat_command_blocked: "<red>You can't use /%command% in combat (%time% left)."
-  combat_teleport_blocked: "<red>You can't teleport in combat (%time% left)."
-  combat_pearl_blocked: "<red>You can't use ender pearls in combat."
-  combat_chorus_blocked: "<red>You can't eat chorus fruit in combat."
-  combat_elytra_blocked: "<red>You can't fly with an elytra in combat."
-  combat_riptide_blocked: "<red>You can't use riptide in combat."
+  # Server-wide override (/pvp force), for events
+  pvp_forced_on_broadcast: "<gold>Staff have turned PvP <red>on</red> for everyone. Your own setting is ignored until this is lifted."
+  pvp_forced_off_broadcast: "<gold>Staff have turned PvP <green>off</green> for everyone. Your own setting is ignored until this is lifted."
+  pvp_force_cleared_broadcast: "<green>The server-wide PvP override has been lifted. Your own setting applies again."
+  pvp_forced_on_notice: "<gold>PvP is currently forced <red>on</red> for everyone by staff."
+  pvp_forced_off_notice: "<gold>PvP is currently forced <green>off</green> for everyone by staff."
+  pvp_forced_off_denied: "<red>PvP is turned off for everyone right now."
+  duel_overridden: "<red>Duels are unavailable while staff have PvP forced on or off."
+  force_current: "<gray>Server-wide PvP override: <white>%state%"
+  force_set: "<green>Server-wide PvP override: <white>%state%"
+  force_unchanged: "<yellow>The server-wide PvP override is already %state%."
+  force_state_on: "forced on"
+  force_state_off: "forced off"
+  force_state_none: "none (players' own settings apply)"
 
   # Duels
   duel_disabled: "<red>Duels are disabled on this server."
@@ -205,7 +177,8 @@ messages:
   respawn_protected_attacker: "<red>%player% has just respawned and is protected."
 
   # Staff
-  check_output: "<gold>PvP for %player%:<newline><gray>Consent: %consent%<newline><gray>Toggle cooldown: <white>%cooldown%<newline><gray>Combat tag: <white>%combat%<newline><gray>Duel: <white>%duel%<newline><gray>New-player protection: <white>%newbie%"
+  # Renamed from check_output when the combat tag was removed, so old copies with %combat% are dropped.
+  check_status: "<gold>PvP for %player%:<newline><gray>Consent: %consent%<newline><gray>Toggle cooldown: <white>%cooldown%<newline><gray>Duel: <white>%duel%<newline><gray>New-player protection: <white>%newbie%"
   check_none: "none"
   set_sender: "<green>Set %player%'s PVP to %status%<green>."
   set_target: "<yellow>A staff member set your PVP to %status%<yellow>."

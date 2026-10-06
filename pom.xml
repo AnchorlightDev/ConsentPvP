@@ -18,7 +18,7 @@
     <paper.version>1.21.11-R0.1-SNAPSHOT</paper.version>
     <!--
       2.4.0 adds the modules this plugin is built on: VersionedConfig, PlatformScheduler (Folia),
-      CombatTagService, BlockOwnership, InviteRegistry, DebouncedFileWriter, UpdateChecker,
+      BlockOwnership, InviteRegistry, DebouncedFileWriter, UpdateChecker,
       BedrockForms, Buttons and section-backed MessageService. It must be released (tagged on
       JitPack) before this builds in CI.
     -->
@@ -166,7 +166,6 @@
                   -->
                   <includes>
                     <include>dev/anchorlight/stonelib/bedrock/**</include>
-                    <include>dev/anchorlight/stonelib/combat/**</include>
                     <include>dev/anchorlight/stonelib/command/**</include>
                     <include>dev/anchorlight/stonelib/config/**</include>
                     <include>dev/anchorlight/stonelib/cooldown/**</include>
@@ -174,7 +173,6 @@
                     <include>dev/anchorlight/stonelib/message/**</include>
                     <include>dev/anchorlight/stonelib/ownership/**</include>
                     <include>dev/anchorlight/stonelib/scheduler/**</include>
-                    <include>dev/anchorlight/stonelib/sound/**</include>
                     <include>dev/anchorlight/stonelib/time/**</include>
                     <include>dev/anchorlight/stonelib/update/**</include>
                     <include>dev/anchorlight/stonelib/vanish/**</include>

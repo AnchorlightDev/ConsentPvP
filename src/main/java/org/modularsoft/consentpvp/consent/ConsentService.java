@@ -6,7 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.modularsoft.consentpvp.Settings;
 import org.modularsoft.consentpvp.api.PvPConsentChangeEvent;
-import org.modularsoft.consentpvp.combat.CombatTagManager;
+import org.modularsoft.consentpvp.api.PvPOverride;
 import org.modularsoft.consentpvp.data.PlayerDataStore;
 import org.modularsoft.consentpvp.duel.DuelManager;
 import org.modularsoft.consentpvp.protection.NewbieProtection;
@@ -29,11 +29,12 @@ public final class ConsentService {
     private final CooldownService cooldowns;
     private final Supplier<Settings> settings;
     private final Messages messages;
-    private CombatTagManager combat;
     private DuelManager duels;
     private NewbieProtection newbies;
     private RespawnProtection respawn;
     private Consumer<Player> onChanged = player -> { };
+    /** In memory only, so a forgotten event override does not outlive a restart. */
+    private volatile PvPOverride override = PvPOverride.NONE;
 
     public ConsentService(PlayerDataStore data, CooldownService cooldowns, Supplier<Settings> settings,
                           Messages messages) {
@@ -44,9 +45,8 @@ public final class ConsentService {
     }
 
     /** Wires the services that depend on this one; called once during enable. */
-    public void wire(CombatTagManager combat, DuelManager duels, NewbieProtection newbies,
+    public void wire(DuelManager duels, NewbieProtection newbies,
                      RespawnProtection respawn, Consumer<Player> onChanged) {
-        this.combat = combat;
         this.duels = duels;
         this.newbies = newbies;
         this.respawn = respawn;
@@ -57,10 +57,33 @@ public final class ConsentService {
         return data.hasConsent(player);
     }
 
-    /** Mutual consent, or a duel between exactly these two. Ignores respawn protection. */
+    public PvPOverride override() {
+        return override;
+    }
+
+    public void setOverride(PvPOverride override) {
+        this.override = override;
+    }
+
+    /** Whether the player shows as PvP-on: their own setting, unless an override decides for them. */
+    public boolean effectiveConsent(UUID player) {
+        return switch (override) {
+            case FORCED_ON -> true;
+            case FORCED_OFF -> false;
+            case NONE -> data.hasConsent(player);
+        };
+    }
+
+    /**
+     * Mutual consent, or a duel between exactly these two, unless a server-wide override decides.
+     * Ignores respawn protection.
+     */
     public boolean consentsTo(UUID attacker, UUID defender) {
         if (attacker.equals(defender)) {
             return false;
+        }
+        if (override != PvPOverride.NONE) {
+            return override == PvPOverride.FORCED_ON;
         }
         return (data.hasConsent(attacker) && data.hasConsent(defender)) || duels.isDueling(attacker, defender);
     }
@@ -72,7 +95,7 @@ public final class ConsentService {
 
     /** What happened to a toggle request. */
     public enum ToggleResult {
-        CHANGED, ALREADY, NEWBIE, IN_COMBAT, COOLDOWN, CANCELLED
+        CHANGED, ALREADY, NEWBIE, COOLDOWN, CANCELLED
     }
 
     /**
@@ -91,9 +114,6 @@ public final class ConsentService {
                 messages.send(player, "newbie_blocked", "time", Durations.compact(newbieLeft));
                 return ToggleResult.NEWBIE;
             }
-        } else if (combat.isTagged(id)) {
-            messages.send(player, "combat_tagged_toggle", "time", Durations.compact(combat.remaining(id)));
-            return ToggleResult.IN_COMBAT;
         }
         if (cooldowns.isOnCooldown(id, TOGGLE_COOLDOWN)) {
             messages.send(player, "on_cooldown", "time",
@@ -106,6 +126,7 @@ public final class ConsentService {
         }
         cooldowns.apply(id, TOGGLE_COOLDOWN, settings.get().toggleCooldown());
         messages.send(player, enable ? "pvp_enabled" : "pvp_disabled");
+        sendOverrideNotice(player);
         return ToggleResult.CHANGED;
     }
 
@@ -133,6 +154,15 @@ public final class ConsentService {
 
     private boolean change(Player player, boolean enable, PvPConsentChangeEvent.Cause cause) {
         return force(player.getUniqueId(), player, enable, cause);
+    }
+
+    /** Tells the player their own setting is being overridden, when it is. */
+    public void sendOverrideNotice(Player player) {
+        switch (override) {
+            case FORCED_ON -> messages.send(player, "pvp_forced_on_notice");
+            case FORCED_OFF -> messages.send(player, "pvp_forced_off_notice");
+            case NONE -> { }
+        }
     }
 
     public CooldownService cooldowns() {

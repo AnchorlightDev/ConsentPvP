@@ -43,7 +43,7 @@ class StaffCommandTest extends PluginTest {
         Harness.veteran(alice);
         String out = console("pvp check Alice");
         assertTrue(out.contains("Alice") && out.contains("Consent") && out.contains("Toggle cooldown")
-                && out.contains("Combat tag") && out.contains("Duel") && out.contains("New-player protection"), out);
+                && !out.contains("Combat tag") && out.contains("Duel") && out.contains("New-player protection"), out);
     }
 
     @Test
@@ -63,7 +63,7 @@ class StaffCommandTest extends PluginTest {
     }
 
     @Test
-    void setIgnoresNewbieProtectionAndCombat() {
+    void setIgnoresNewbieProtection() {
         PlayerMock fresh = server.addPlayer("Fresh");
         console("pvp set Fresh on");
         assertTrue(plugin.consent().hasConsent(fresh.getUniqueId()));
