@@ -64,6 +64,14 @@ It runs on **Paper 1.21.11** and on **Folia**, and needs **Java 21**.
 
 ---
 
+## Requirements
+
+- **Server software:** Paper (or a Paper fork) 1.21.x, or Folia
+- **Java:** 21+
+- **Optional:** Floodgate, for Bedrock forms
+
+---
+
 ## Installation
 
 1. Download the latest JAR from the [Releases page](https://github.com/ModularSoftAU/ConsentPvP/releases).
