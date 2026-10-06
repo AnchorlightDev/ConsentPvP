@@ -28,15 +28,6 @@ public interface ConsentPvPAPI {
     /** The player's own PvP setting. Duels and {@link #getOverride()} do not change it. */
     boolean hasConsent(UUID player);
 
-    /**
-     * Always false: combat tagging was removed. Kept so plugins compiled against earlier versions
-     * do not fail with {@code NoSuchMethodError}.
-     */
-    @Deprecated(forRemoval = true)
-    default boolean isInCombat(UUID player) {
-        return false;
-    }
-
     /** Whether these two players are in an active duel with each other. */
     boolean isDueling(UUID first, UUID second);
 

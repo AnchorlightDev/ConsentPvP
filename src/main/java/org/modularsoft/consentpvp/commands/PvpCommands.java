@@ -273,7 +273,7 @@ public final class PvpCommands {
         private void send(CommandSender sender, String name, Component consent, Duration cooldown, String duel,
                           String newbie) {
             String none = plainNone();
-            messages.send(sender, "check_status",
+            messages.send(sender, "check_output",
                     "player", name,
                     "consent", consent,
                     "cooldown", cooldown.isZero() ? none : Durations.compact(cooldown),

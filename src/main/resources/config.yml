@@ -177,8 +177,7 @@ messages:
   respawn_protected_attacker: "<red>%player% has just respawned and is protected."
 
   # Staff
-  # Renamed from check_output when the combat tag was removed, so old copies with %combat% are dropped.
-  check_status: "<gold>PvP for %player%:<newline><gray>Consent: %consent%<newline><gray>Toggle cooldown: <white>%cooldown%<newline><gray>Duel: <white>%duel%<newline><gray>New-player protection: <white>%newbie%"
+  check_output: "<gold>PvP for %player%:<newline><gray>Consent: %consent%<newline><gray>Toggle cooldown: <white>%cooldown%<newline><gray>Duel: <white>%duel%<newline><gray>New-player protection: <white>%newbie%"
   check_none: "none"
   set_sender: "<green>Set %player%'s PVP to %status%<green>."
   set_target: "<yellow>A staff member set your PVP to %status%<yellow>."
