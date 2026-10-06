@@ -2,7 +2,7 @@ package org.modularsoft.consentpvp.api;
 
 /**
  * A server-wide override of every player's own PvP setting, set with {@code /pvp force} for events.
- * It lasts until it is cleared or the server restarts, and players' own settings are untouched.
+ * It is saved, so it lasts across restarts until it is cleared. Players' own settings are untouched.
  */
 public enum PvPOverride {
     /** No override: players' own settings and duels apply. */

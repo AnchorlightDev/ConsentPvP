@@ -33,8 +33,6 @@ public final class ConsentService {
     private NewbieProtection newbies;
     private RespawnProtection respawn;
     private Consumer<Player> onChanged = player -> { };
-    /** In memory only, so a forgotten event override does not outlive a restart. */
-    private volatile PvPOverride override = PvPOverride.NONE;
 
     public ConsentService(PlayerDataStore data, CooldownService cooldowns, Supplier<Settings> settings,
                           Messages messages) {
@@ -58,16 +56,17 @@ public final class ConsentService {
     }
 
     public PvPOverride override() {
-        return override;
+        return data.override();
     }
 
+    /** Saved with player data, so an event override survives a restart until it is cleared. */
     public void setOverride(PvPOverride override) {
-        this.override = override;
+        data.setOverride(override);
     }
 
     /** Whether the player shows as PvP-on: their own setting, unless an override decides for them. */
     public boolean effectiveConsent(UUID player) {
-        return switch (override) {
+        return switch (data.override()) {
             case FORCED_ON -> true;
             case FORCED_OFF -> false;
             case NONE -> data.hasConsent(player);
@@ -82,6 +81,7 @@ public final class ConsentService {
         if (attacker.equals(defender)) {
             return false;
         }
+        PvPOverride override = data.override();
         if (override != PvPOverride.NONE) {
             return override == PvPOverride.FORCED_ON;
         }
@@ -158,7 +158,7 @@ public final class ConsentService {
 
     /** Tells the player their own setting is being overridden, when it is. */
     public void sendOverrideNotice(Player player) {
-        switch (override) {
+        switch (data.override()) {
             case FORCED_ON -> messages.send(player, "pvp_forced_on_notice");
             case FORCED_OFF -> messages.send(player, "pvp_forced_off_notice");
             case NONE -> { }

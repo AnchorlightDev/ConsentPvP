@@ -9,6 +9,7 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.modularsoft.consentpvp.api.ConsentPvPAPI;
+import org.modularsoft.consentpvp.api.PvPOverride;
 import org.modularsoft.consentpvp.attack.AttackerResolver;
 import org.modularsoft.consentpvp.attack.DenialNotifier;
 import org.modularsoft.consentpvp.attack.PotionFilter;
@@ -117,6 +118,10 @@ public class ConsentPVP extends JavaPlugin {
             }
         }
         nameTags.updateAllPlayers();
+        if (data.override() != PvPOverride.NONE) {
+            getLogger().warning("PvP is still " + data.override() + " server-wide from /pvp force. "
+                    + "Use /pvp force clear to lift it.");
+        }
     }
 
     @Override

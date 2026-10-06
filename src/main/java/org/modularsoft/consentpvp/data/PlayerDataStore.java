@@ -4,6 +4,7 @@ import dev.anchorlight.stonelib.yaml.DebouncedFileWriter;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.modularsoft.consentpvp.api.PvPOverride;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -32,7 +34,10 @@ import java.util.logging.Logger;
  *   0f0e...: true
  * newbie-cleared:
  *   0f0e...: true
+ * pvp-override: forced_on
  * </pre>
+ *
+ * <p>{@code pvp-override} is the {@code /pvp force} state, written only while one is active.
  *
  * <h2>Saving</h2>
  * A change marks the store dirty and a {@link DebouncedFileWriter} writes it shortly afterwards
@@ -43,10 +48,12 @@ public final class PlayerDataStore implements AutoCloseable {
 
     static final String EXPLAINER_SEEN = "explainer-seen";
     static final String NEWBIE_CLEARED = "newbie-cleared";
+    static final String OVERRIDE = "pvp-override";
 
     private final Map<UUID, Boolean> consent = new ConcurrentHashMap<>();
     private final Set<UUID> explainerSeen = ConcurrentHashMap.newKeySet();
     private final Set<UUID> newbieCleared = ConcurrentHashMap.newKeySet();
+    private volatile PvPOverride override = PvPOverride.NONE;
     private final File file;
     private final Logger logger;
     private final DebouncedFileWriter writer;
@@ -85,6 +92,14 @@ public final class PlayerDataStore implements AutoCloseable {
         }
         readSet(yaml.getConfigurationSection(EXPLAINER_SEEN), explainerSeen);
         readSet(yaml.getConfigurationSection(NEWBIE_CLEARED), newbieCleared);
+        String raw = yaml.getString(OVERRIDE);
+        if (raw != null) {
+            try {
+                override = PvPOverride.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                logger.warning("Ignoring unknown " + OVERRIDE + " '" + raw + "' in " + file.getName());
+            }
+        }
     }
 
     private static void readSet(ConfigurationSection section, Set<UUID> into) {
@@ -105,6 +120,10 @@ public final class PlayerDataStore implements AutoCloseable {
         new TreeMap<>(consent).forEach((uuid, value) -> yaml.set(uuid.toString(), value));
         explainerSeen.stream().sorted().forEach(uuid -> yaml.set(EXPLAINER_SEEN + "." + uuid, true));
         newbieCleared.stream().sorted().forEach(uuid -> yaml.set(NEWBIE_CLEARED + "." + uuid, true));
+        PvPOverride current = override;
+        if (current != PvPOverride.NONE) {
+            yaml.set(OVERRIDE, current.name().toLowerCase(Locale.ROOT));
+        }
         return yaml.saveToString();
     }
 
@@ -141,6 +160,17 @@ public final class PlayerDataStore implements AutoCloseable {
 
     public void clearNewbie(UUID player) {
         if (newbieCleared.add(player)) {
+            writer.markDirty();
+        }
+    }
+
+    public PvPOverride override() {
+        return override;
+    }
+
+    public void setOverride(PvPOverride value) {
+        if (override != value) {
+            override = value;
             writer.markDirty();
         }
     }

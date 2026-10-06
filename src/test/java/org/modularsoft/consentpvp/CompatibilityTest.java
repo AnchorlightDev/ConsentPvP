@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.modularsoft.consentpvp.api.PvPOverride;
 
 import java.io.File;
 import java.io.InputStreamReader;
@@ -115,6 +116,32 @@ class CompatibilityTest {
 
         server.getPluginManager().disablePlugin(plugin);
         assertTrue(Files.readString(data.toPath()).contains(player + ": true"), "flushed by onDisable");
+    }
+
+    @Test
+    void theForceOverrideIsSavedOnDisable() throws Exception {
+        server = MockBukkit.mock();
+        ConsentPVP plugin = MockBukkit.load(ConsentPVP.class);
+        File data = new File(plugin.getDataFolder(), "playerdata.yml");
+        server.dispatchCommand(server.getConsoleSender(), "pvp force on");
+        server.getPluginManager().disablePlugin(plugin);
+        assertEquals("forced_on", YamlConfiguration.loadConfiguration(data).getString("pvp-override"));
+    }
+
+    @Test
+    void aSavedForceOverrideIsBackAfterARestart() throws Exception {
+        server = MockBukkit.mock();
+        UUID on = UUID.randomUUID();
+        File data = new File(dataFolder(), "playerdata.yml");
+        Files.writeString(data.toPath(), on + ": true\npvp-override: forced_off\n", StandardCharsets.UTF_8);
+
+        ConsentPVP plugin = MockBukkit.load(ConsentPVP.class);
+        assertEquals(PvPOverride.FORCED_OFF, plugin.consent().override());
+        assertTrue(plugin.consent().hasConsent(on), "player settings load alongside it");
+
+        server.dispatchCommand(server.getConsoleSender(), "pvp force clear");
+        assertTrue(plugin.data().flush());
+        assertFalse(Files.readString(data.toPath()).contains("pvp-override"), "cleared overrides are not written");
     }
 
     @Test

@@ -36,7 +36,7 @@ It runs on **Paper 1.21.11** and on **Folia**, and needs **Java 21**.
   `/pvp force clear` puts everyone back as they were. Everyone online is told when it changes, and
   players who join, check their status or toggle while it is active are reminded. Respawn protection
   still applies when forced on. Starting an override ends any running duels, and no new ones can
-  start until it is cleared. The override lasts until it is cleared or the server restarts.
+  start until it is cleared. The override is saved and survives restarts until it is cleared; the console warns on startup while one is active.
 - **Duels.** `/pvp duel <player>` asks for a one-off fight. Accepting it gives just those two
   players consent with each other, without changing either player's own setting. The duel ends on
   death, logout or a time limit. Requests expire, and the same player cannot be re-challenged
