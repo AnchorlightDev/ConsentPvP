@@ -37,6 +37,10 @@ It runs on **Paper 1.21.11** and on **Folia**, and needs **Java 21**.
   players who join, check their status or toggle while it is active are reminded. Respawn protection
   still applies when forced on. Starting an override ends any running duels, and no new ones can
   start until it is cleared. The override is saved and survives restarts until it is cleared; the console warns on startup while one is active.
+- **Per-player lock.** `/pvp lock <player> on|off` fixes one player's PvP at that state and stops
+  them changing it themselves, for a single troublemaker or a protected guest. The player is told,
+  and their attempts to toggle are refused with a notice. `/pvp unlock <player>` releases it. A lock
+  also holds through death, so disable-on-death leaves a locked player alone.
 - **Duels.** `/pvp duel <player>` asks for a one-off fight. Accepting it gives just those two
   players consent with each other, without changing either player's own setting. The duel ends on
   death, logout or a time limit. Requests expire, and the same player cannot be re-challenged
@@ -91,8 +95,10 @@ Upgrading keeps your existing `config.yml` values and `playerdata.yml`. New sett
 | `/pvp enable` / `/pvp disable` | players | Turns your PvP consent on or off. |
 | `/pvp duel <player>` | players | Challenges a player to a duel. |
 | `/pvp accept [player]` / `/pvp deny [player]` | players | Answers a duel request. The newest one is used if you give no name. |
-| `/pvp check <player>` | staff, console | Shows consent, toggle cooldown, active duel and new-player protection. |
+| `/pvp check <player>` | staff, console | Shows consent, lock state, toggle cooldown, active duel and new-player protection. |
 | `/pvp set <player> on\|off` | staff, console | Forces a player's consent, ignoring cooldowns and protection. |
+| `/pvp lock <player> on\|off` | staff, console | Forces a player's consent and locks it so they cannot change it themselves. |
+| `/pvp unlock <player>` | staff, console | Releases a lock, letting the player toggle their own PvP again. |
 | `/pvp force on\|off\|clear` | staff, console | Overrides everyone's PvP server-wide for an event, or lifts the override. With no argument, shows the current state. |
 | `/pvp bypass <player>` | staff, console | Clears a player's toggle cooldown. |
 | `/pvp newbie clear <player>` | staff, console | Lifts new-player protection early. |

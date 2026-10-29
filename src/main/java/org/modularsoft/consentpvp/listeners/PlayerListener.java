@@ -81,6 +81,7 @@ public final class PlayerListener implements Listener {
         Player player = event.getEntity();
         duels.onDeath(player.getUniqueId());
         if (settings.get().disablePvpOnDeath()
+                && !consent.isLocked(player.getUniqueId())
                 && consent.force(player.getUniqueId(), player, false, PvPConsentChangeEvent.Cause.DEATH)) {
             messages.send(player, "pvp_disabled_on_death");
         }

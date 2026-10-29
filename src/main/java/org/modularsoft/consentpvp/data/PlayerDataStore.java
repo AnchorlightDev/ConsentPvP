@@ -34,10 +34,14 @@ import java.util.logging.Logger;
  *   0f0e...: true
  * newbie-cleared:
  *   0f0e...: true
+ * pvp-locked:
+ *   0f0e...: true
  * pvp-override: forced_on
  * </pre>
  *
- * <p>{@code pvp-override} is the {@code /pvp force} state, written only while one is active.
+ * <p>{@code pvp-locked} lists players whose PvP a staff member has locked with {@code /pvp lock},
+ * so they cannot toggle it themselves. {@code pvp-override} is the {@code /pvp force} state, written
+ * only while one is active.
  *
  * <h2>Saving</h2>
  * A change marks the store dirty and a {@link DebouncedFileWriter} writes it shortly afterwards
@@ -48,11 +52,13 @@ public final class PlayerDataStore implements AutoCloseable {
 
     static final String EXPLAINER_SEEN = "explainer-seen";
     static final String NEWBIE_CLEARED = "newbie-cleared";
+    static final String LOCKED = "pvp-locked";
     static final String OVERRIDE = "pvp-override";
 
     private final Map<UUID, Boolean> consent = new ConcurrentHashMap<>();
     private final Set<UUID> explainerSeen = ConcurrentHashMap.newKeySet();
     private final Set<UUID> newbieCleared = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> locked = ConcurrentHashMap.newKeySet();
     private volatile PvPOverride override = PvPOverride.NONE;
     private final File file;
     private final Logger logger;
@@ -92,6 +98,7 @@ public final class PlayerDataStore implements AutoCloseable {
         }
         readSet(yaml.getConfigurationSection(EXPLAINER_SEEN), explainerSeen);
         readSet(yaml.getConfigurationSection(NEWBIE_CLEARED), newbieCleared);
+        readSet(yaml.getConfigurationSection(LOCKED), locked);
         String raw = yaml.getString(OVERRIDE);
         if (raw != null) {
             try {
@@ -120,6 +127,7 @@ public final class PlayerDataStore implements AutoCloseable {
         new TreeMap<>(consent).forEach((uuid, value) -> yaml.set(uuid.toString(), value));
         explainerSeen.stream().sorted().forEach(uuid -> yaml.set(EXPLAINER_SEEN + "." + uuid, true));
         newbieCleared.stream().sorted().forEach(uuid -> yaml.set(NEWBIE_CLEARED + "." + uuid, true));
+        locked.stream().sorted().forEach(uuid -> yaml.set(LOCKED + "." + uuid, true));
         PvPOverride current = override;
         if (current != PvPOverride.NONE) {
             yaml.set(OVERRIDE, current.name().toLowerCase(Locale.ROOT));
@@ -162,6 +170,20 @@ public final class PlayerDataStore implements AutoCloseable {
         if (newbieCleared.add(player)) {
             writer.markDirty();
         }
+    }
+
+    /** Whether a staff member has locked this player's PvP so they cannot toggle it themselves. */
+    public boolean isLocked(UUID player) {
+        return player != null && locked.contains(player);
+    }
+
+    /** @return true when the locked state actually changed */
+    public boolean setLocked(UUID player, boolean value) {
+        boolean changed = value ? locked.add(player) : locked.remove(player);
+        if (changed) {
+            writer.markDirty();
+        }
+        return changed;
     }
 
     public PvPOverride override() {

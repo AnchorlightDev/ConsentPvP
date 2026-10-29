@@ -78,6 +78,8 @@ public final class PvpCommands {
         router.register(new Bypass());
         router.register(new Check());
         router.register(new SetConsent());
+        router.register(new Lock());
+        router.register(new Unlock());
         router.register(new Force());
         router.register(new Newbie());
         router.register(simple("reload", ADMIN, (sender, args) -> {
@@ -249,6 +251,7 @@ public final class PvpCommands {
             UUID id = target.getUniqueId();
             String none = plainNone();
             Component consent = plugin.statusPresenter().statusWord(plugin.consent().hasConsent(id));
+            Component locked = messages.plain(plugin.consent().isLocked(id) ? "locked_yes" : "locked_no");
             Duration cooldown = plugin.consent().cooldowns().remaining(id, ConsentService.TOGGLE_COOLDOWN);
             String duel = plugin.duels().duelOf(id)
                     .map(d -> {
@@ -259,23 +262,24 @@ public final class PvpCommands {
             String name = target.getName() == null ? args[0] : target.getName();
             Player online = target.getPlayer();
             if (online == null) {
-                send(sender, name, consent, cooldown, duel, none);
+                send(sender, name, consent, locked, cooldown, duel, none);
                 return;
             }
             // Playtime is the target's own state, so it is read on the target's thread.
             plugin.scheduler().runOn(online, () -> {
                 Duration newbie = plugin.newbies().remaining(online);
-                send(sender, name, consent, cooldown, duel,
+                send(sender, name, consent, locked, cooldown, duel,
                         newbie.isZero() ? none : Durations.compact(newbie));
             });
         }
 
-        private void send(CommandSender sender, String name, Component consent, Duration cooldown, String duel,
-                          String newbie) {
+        private void send(CommandSender sender, String name, Component consent, Component locked, Duration cooldown,
+                          String duel, String newbie) {
             String none = plainNone();
             messages.send(sender, "check_output",
                     "player", name,
                     "consent", consent,
+                    "locked", locked,
                     "cooldown", cooldown.isZero() ? none : Durations.compact(cooldown),
                     "duel", duel,
                     "newbie", newbie);
@@ -330,6 +334,77 @@ public final class PvpCommands {
                 return StringUtil.copyPartialMatches(args[1], List.of("on", "off"), new ArrayList<>());
             }
             return Collections.emptyList();
+        }
+    }
+
+    /** {@code /pvp lock <player> <on|off>}: fix a player's PvP so they cannot toggle it themselves. */
+    private final class Lock extends Targeted {
+        @Override public String getName() { return "lock"; }
+
+        @Override
+        public void execute(CommandSender sender, String[] args) {
+            if (args.length < 2) {
+                messages.send(sender, "usage_lock");
+                return;
+            }
+            String state = args[1].toLowerCase(Locale.ROOT);
+            if (!state.equals("on") && !state.equals("off")) {
+                messages.send(sender, "usage_lock");
+                return;
+            }
+            OfflinePlayer target = findPlayer(args[0]);
+            if (target == null) {
+                messages.send(sender, "player_not_found", "player", args[0]);
+                return;
+            }
+            boolean enable = state.equals("on");
+            UUID id = target.getUniqueId();
+            Player online = target.getPlayer();
+            plugin.consent().lock(id, online, enable);
+            Component word = plugin.statusPresenter().statusWord(enable);
+            String name = target.getName() == null ? args[0] : target.getName();
+            messages.send(sender, "lock_sender", "player", name, "status", word);
+            if (online != null) {
+                messages.send(online, "lock_target", "status", word);
+            }
+        }
+
+        @Override
+        public List<String> tabComplete(CommandSender sender, String[] args) {
+            if (args.length == 1) {
+                return onlineNames(args[0]);
+            }
+            if (args.length == 2) {
+                return StringUtil.copyPartialMatches(args[1], List.of("on", "off"), new ArrayList<>());
+            }
+            return Collections.emptyList();
+        }
+    }
+
+    /** {@code /pvp unlock <player>}: let a player toggle their own PvP again. */
+    private final class Unlock extends Targeted {
+        @Override public String getName() { return "unlock"; }
+
+        @Override
+        public void execute(CommandSender sender, String[] args) {
+            if (args.length < 1) {
+                messages.send(sender, "usage_unlock");
+                return;
+            }
+            OfflinePlayer target = findPlayer(args[0]);
+            if (target == null) {
+                messages.send(sender, "player_not_found", "player", args[0]);
+                return;
+            }
+            String name = target.getName() == null ? args[0] : target.getName();
+            if (!plugin.consent().unlock(target.getUniqueId())) {
+                messages.send(sender, "unlock_not_locked", "player", name);
+                return;
+            }
+            messages.send(sender, "unlock_sender", "player", name);
+            if (target.getPlayer() != null) {
+                messages.send(target.getPlayer(), "unlock_target");
+            }
         }
     }
 

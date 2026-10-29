@@ -55,6 +55,29 @@ public final class ConsentService {
         return data.hasConsent(player);
     }
 
+    /** Whether a staff member has locked this player's PvP so they cannot change it themselves. */
+    public boolean isLocked(UUID player) {
+        return data.isLocked(player);
+    }
+
+    /**
+     * Locks a player's PvP at {@code enable}, overriding their current setting if it differs, so they
+     * cannot toggle it themselves until a staff member unlocks it. {@code player} may be null offline.
+     */
+    public void lock(UUID id, Player player, boolean enable) {
+        force(id, player, enable, PvPConsentChangeEvent.Cause.ADMIN);
+        data.setLocked(id, true);
+    }
+
+    /**
+     * Releases a lock set by {@link #lock}. Leaves the player's current setting as it is.
+     *
+     * @return true when the player was locked and is now free to toggle again
+     */
+    public boolean unlock(UUID id) {
+        return data.setLocked(id, false);
+    }
+
     public PvPOverride override() {
         return data.override();
     }
@@ -95,7 +118,7 @@ public final class ConsentService {
 
     /** What happened to a toggle request. */
     public enum ToggleResult {
-        CHANGED, ALREADY, NEWBIE, COOLDOWN, CANCELLED
+        CHANGED, ALREADY, NEWBIE, COOLDOWN, CANCELLED, LOCKED
     }
 
     /**
@@ -104,6 +127,10 @@ public final class ConsentService {
      */
     public ToggleResult requestToggle(Player player, boolean enable) {
         UUID id = player.getUniqueId();
+        if (data.isLocked(id)) {
+            messages.send(player, "pvp_locked");
+            return ToggleResult.LOCKED;
+        }
         if (data.hasConsent(id) == enable) {
             messages.send(player, enable ? "already_enabled" : "already_disabled");
             return ToggleResult.ALREADY;
